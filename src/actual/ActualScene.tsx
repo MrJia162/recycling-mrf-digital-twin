@@ -1,6 +1,7 @@
 import {
   Component,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentRef,
@@ -16,6 +17,7 @@ import { ActualSimulation, openGate } from './engine';
 import {
   CAPACITY,
   EQUIPMENT,
+  EQUIPMENT_IDS,
   MANUAL_PATH,
   MATERIALS,
   ROUTES,
@@ -47,6 +49,252 @@ function routeColor(id: string) {
       : id.includes('Misc') || id.includes('manual')
         ? '#e9bf75'
         : '#5adcb0';
+}
+
+const REPLACED_ID = 'E25';
+const ZONE_MARGIN = 0.22;
+const ZONE_Y = 1.19;
+const ZONE_EPSILON = 1e-6;
+interface ZoneRect {
+  minX: number;
+  minZ: number;
+  maxX: number;
+  maxZ: number;
+}
+interface ZoneSegment {
+  fixed: number;
+  start: number;
+  end: number;
+}
+function mergeZoneSegments(segments: ZoneSegment[]): ZoneSegment[] {
+  const groups = new Map<string, ZoneSegment[]>();
+  for (const segment of segments) {
+    const key = segment.fixed.toFixed(5);
+    const group = groups.get(key);
+    if (group) group.push(segment);
+    else groups.set(key, [segment]);
+  }
+  const merged: ZoneSegment[] = [];
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.start - b.start);
+    let current = { ...group[0] };
+    for (const segment of group.slice(1)) {
+      if (segment.start <= current.end + ZONE_EPSILON)
+        current.end = Math.max(current.end, segment.end);
+      else {
+        merged.push(current);
+        current = { ...segment };
+      }
+    }
+    merged.push(current);
+  }
+  return merged;
+}
+function unionZoneOutline(rects: ZoneRect[]): Point[][] {
+  const xs = [...new Set(rects.flatMap((rect) => [rect.minX, rect.maxX]))].sort((a, b) => a - b);
+  const zs = [...new Set(rects.flatMap((rect) => [rect.minZ, rect.maxZ]))].sort((a, b) => a - b);
+  const columns = xs.length - 1,
+    rows = zs.length - 1;
+  const covered = Array.from({ length: columns }, (_, column) =>
+    Array.from({ length: rows }, (_, row) => {
+      const x = (xs[column] + xs[column + 1]) / 2,
+        z = (zs[row] + zs[row + 1]) / 2;
+      return rects.some((rect) => x > rect.minX && x < rect.maxX && z > rect.minZ && z < rect.maxZ);
+    }),
+  );
+  const isCovered = (column: number, row: number) =>
+    column >= 0 && row >= 0 && column < columns && row < rows && covered[column][row];
+  const vertical: ZoneSegment[] = [],
+    horizontal: ZoneSegment[] = [];
+  for (let column = 0; column <= columns; column += 1)
+    for (let row = 0; row < rows; row += 1)
+      if (isCovered(column - 1, row) !== isCovered(column, row))
+        vertical.push({ fixed: xs[column], start: zs[row], end: zs[row + 1] });
+  for (let row = 0; row <= rows; row += 1)
+    for (let column = 0; column < columns; column += 1)
+      if (isCovered(column, row - 1) !== isCovered(column, row))
+        horizontal.push({ fixed: zs[row], start: xs[column], end: xs[column + 1] });
+  return [
+    ...mergeZoneSegments(vertical).map(
+      (segment): Point[] => [
+        [segment.fixed, ZONE_Y, segment.start],
+        [segment.fixed, ZONE_Y, segment.end],
+      ],
+    ),
+    ...mergeZoneSegments(horizontal).map(
+      (segment): Point[] => [
+        [segment.start, ZONE_Y, segment.fixed],
+        [segment.end, ZONE_Y, segment.fixed],
+      ],
+    ),
+  ];
+}
+function EquipmentZones() {
+  const lines = useMemo(
+    () =>
+      unionZoneOutline(
+        EQUIPMENT_IDS.map((id) => {
+          const [minX, , minZ, maxX, , maxZ] = cad[id].bounds;
+          return {
+            minX: minX - ZONE_MARGIN,
+            minZ: minZ - ZONE_MARGIN,
+            maxX: maxX + ZONE_MARGIN,
+            maxZ: maxZ + ZONE_MARGIN,
+          };
+        }),
+      ),
+    [],
+  );
+  return (
+    <>
+      {lines.map((points, index) => (
+        <Line
+          key={index}
+          points={points}
+          color="#f7c948"
+          lineWidth={2}
+          transparent
+          opacity={0.9}
+          depthWrite={false}
+        />
+      ))}
+    </>
+  );
+}
+
+const BAG_PROFILE = [
+  [0, 0],
+  [0.2, 0.015],
+  [0.29, 0.09],
+  [0.33, 0.24],
+  [0.32, 0.36],
+  [0.27, 0.46],
+  [0.2, 0.54],
+  [0.13, 0.61],
+  [0.12, 0.67],
+  [0.08, 0.72],
+  [0, 0.74],
+].map(([x, y]) => new THREE.Vector2(x, y));
+const WEIGHING_CENTER: [number, number] = [
+  cad.E06.bounds[3] - 1.2,
+  (cad.E06.bounds[2] + cad.E06.bounds[5]) / 2 - 3,
+];
+const WEIGHING_SCALE = 1.2;
+const WEIGHING_HALF = (1.18 * WEIGHING_SCALE) / 2 + 0.5;
+function WeighingStation() {
+  return (
+    <group
+      position={[WEIGHING_CENTER[0], 1.19, WEIGHING_CENTER[1]]}
+      scale={WEIGHING_SCALE}
+    >
+      <mesh position={[0, 0.09, 0]}>
+        <boxGeometry args={[1.18, 0.18, 1.18]} />
+        <meshStandardMaterial color="#2f3a40" metalness={0.5} roughness={0.45} />
+      </mesh>
+      {[
+        [-0.46, -0.46],
+        [0.46, -0.46],
+        [-0.46, 0.46],
+        [0.46, 0.46],
+      ].map(([x, z]) => (
+        <mesh key={`${x}-${z}`} position={[x, 0.025, z]}>
+          <cylinderGeometry args={[0.07, 0.09, 0.05, 12]} />
+          <meshStandardMaterial color="#182126" metalness={0.6} roughness={0.35} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.24, 0]}>
+        <boxGeometry args={[1.02, 0.08, 1.02]} />
+        <meshStandardMaterial color="#8c9aa1" metalness={0.6} roughness={0.32} />
+      </mesh>
+      <mesh position={[0, 0.29, 0]}>
+        <boxGeometry args={[0.86, 0.02, 0.86]} />
+        <meshStandardMaterial color="#c9a227" metalness={0.35} roughness={0.55} />
+      </mesh>
+      <mesh position={[-0.47, 0.58, -0.39]}>
+        <cylinderGeometry args={[0.035, 0.045, 0.75, 8]} />
+        <meshStandardMaterial color="#39464d" metalness={0.55} roughness={0.4} />
+      </mesh>
+      <group position={[-0.47, 1.02, -0.39]} rotation={[0, -0.35, 0]}>
+        <mesh>
+          <boxGeometry args={[0.36, 0.24, 0.11]} />
+          <meshStandardMaterial color="#1a252a" metalness={0.3} roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.02, 0.058]}>
+          <planeGeometry args={[0.27, 0.14]} />
+          <meshStandardMaterial
+            color="#6fe0b5"
+            emissive="#37b98c"
+            emissiveIntensity={0.7}
+            roughness={0.3}
+          />
+        </mesh>
+      </group>
+      <mesh position={[0.08, 0.29, 0.06]}>
+        <latheGeometry args={[BAG_PROFILE, 24]} />
+        <meshStandardMaterial color="#c7b08a" roughness={0.98} metalness={0.01} />
+      </mesh>
+      <mesh position={[0.08, 0.965, 0.06]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.118, 0.014, 6, 14]} />
+        <meshStandardMaterial color="#6f5c3f" roughness={0.9} />
+      </mesh>
+    </group>
+  );
+}
+
+function WeighingZone() {
+  const label = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.font = '700 72px "Microsoft YaHei", "PingFang SC", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    context.shadowBlur = 10;
+    context.fillStyle = '#f7c948';
+    context.fillText('称重区', canvas.width / 2, 66);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    return texture;
+  }, []);
+  useEffect(() => () => label?.dispose(), [label]);
+  const points = useMemo(() => {
+    const [x, z] = WEIGHING_CENTER;
+    const y = 1.19;
+    return [
+      [x - WEIGHING_HALF, y, z - WEIGHING_HALF],
+      [x + WEIGHING_HALF, y, z - WEIGHING_HALF],
+      [x + WEIGHING_HALF, y, z + WEIGHING_HALF],
+      [x - WEIGHING_HALF, y, z + WEIGHING_HALF],
+      [x - WEIGHING_HALF, y, z - WEIGHING_HALF],
+    ] as Point[];
+  }, []);
+  return (
+    <>
+      <Line
+        points={points}
+        color="#f7c948"
+        lineWidth={2}
+        transparent
+        opacity={0.9}
+        depthWrite={false}
+      />
+      {label && (
+        <mesh
+          position={[WEIGHING_CENTER[0], 1.192, WEIGHING_CENTER[1] + 0.9]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
+        >
+          <planeGeometry args={[1.25, 0.3125]} />
+          <meshBasicMaterial map={label} transparent depthWrite={false} toneMapped={false} />
+        </mesh>
+      )}
+    </>
+  );
 }
 
 function Plant({
@@ -118,7 +366,7 @@ function Plant({
   useEffect(() => {
     if (!model) return;
     for (const [id, root] of roots.current) {
-      root.visible = id !== 'E01' || shell;
+      root.visible = id === 'E01' ? shell : id !== REPLACED_ID;
       const stock = ['E02', 'E03', 'E04', 'E05'].includes(id);
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -661,12 +909,9 @@ export default function ActualScene(props: Props) {
             <planeGeometry
               args={[cad.E01.bounds[3] - cad.E01.bounds[0], cad.E01.bounds[5] - cad.E01.bounds[2]]}
             />
-            <meshStandardMaterial color="#b9c8ce" roughness={0.95} />
+            <meshStandardMaterial color="#53575a" roughness={0.98} metalness={0.02} />
           </mesh>
-          <gridHelper
-            args={[50, 50, '#8ea6b1', '#b0c0c8']}
-            position={[cad.E01.center[0], 1.175, cad.E01.center[2]]}
-          />
+          <EquipmentZones />
           {props.paths &&
             Object.entries(ROUTES).map(([id, route]) => (
               <Line
@@ -680,6 +925,8 @@ export default function ActualScene(props: Props) {
               />
             ))}
           <Bottles simulation={props.simulation} />
+          <WeighingZone />
+          <WeighingStation />
           <SiloContents {...props} />
           <DeltaRobot simulation={props.simulation} />
           <SmallStocks {...props} />
