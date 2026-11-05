@@ -52,6 +52,23 @@ function routeColor(id: string) {
 }
 
 const REPLACED_ID = 'E25';
+const UNMOVED_IDS = new Set<string>(['E01', 'E19', 'E20', 'E21', 'E22', 'E23', 'E24']);
+const LINE_CENTER = EQUIPMENT_IDS.reduce(
+  (bounds, id) => {
+    const b = cad[id].bounds;
+    bounds.minX = Math.min(bounds.minX, b[0]);
+    bounds.minZ = Math.min(bounds.minZ, b[2]);
+    bounds.maxX = Math.max(bounds.maxX, b[3]);
+    bounds.maxZ = Math.max(bounds.maxZ, b[5]);
+    return bounds;
+  },
+  { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity },
+);
+const MODEL_OFFSET: Point = [
+  cad.E01.center[0] - (LINE_CENTER.minX + LINE_CENTER.maxX) / 2,
+  0,
+  cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
+];
 const ZONE_MARGIN = 0.22;
 const ZONE_Y = 1.19;
 const ZONE_EPSILON = 1e-6;
@@ -242,26 +259,6 @@ function WeighingStation() {
 }
 
 function WeighingZone() {
-  const label = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.font = '700 72px "Microsoft YaHei", "PingFang SC", sans-serif';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.shadowColor = 'rgba(0, 0, 0, 0.65)';
-    context.shadowBlur = 10;
-    context.fillStyle = '#f7c948';
-    context.fillText('称重区', canvas.width / 2, 66);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-    return texture;
-  }, []);
-  useEffect(() => () => label?.dispose(), [label]);
   const points = useMemo(() => {
     const [x, z] = WEIGHING_CENTER;
     const y = 1.19;
@@ -283,17 +280,48 @@ function WeighingZone() {
         opacity={0.9}
         depthWrite={false}
       />
-      {label && (
-        <mesh
-          position={[WEIGHING_CENTER[0], 1.192, WEIGHING_CENTER[1] + 0.9]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          renderOrder={2}
-        >
-          <planeGeometry args={[1.25, 0.3125]} />
-          <meshBasicMaterial map={label} transparent depthWrite={false} toneMapped={false} />
-        </mesh>
-      )}
     </>
+  );
+}
+
+const ARROW_SHAPE = (() => {
+  const shape = new THREE.Shape();
+  shape.moveTo(0.72, 0.12);
+  shape.lineTo(0, 0.12);
+  shape.lineTo(0, 0.3);
+  shape.lineTo(-0.56, 0);
+  shape.lineTo(0, -0.3);
+  shape.lineTo(0, -0.12);
+  shape.lineTo(0.72, -0.12);
+  shape.closePath();
+  return new THREE.ShapeGeometry(shape);
+})();
+function EntranceFlowArrow() {
+  const group = useRef<THREE.Group>(null);
+  const material = useRef<THREE.MeshBasicMaterial>(null);
+  const start = cad.E06.bounds[3] + 3.1;
+  const z = (cad.E06.bounds[2] + cad.E06.bounds[5]) / 2;
+  useFrame(({ clock }) => {
+    const phase = (clock.elapsedTime * 0.55) % 1;
+    if (group.current) group.current.position.x = -phase * 1.4;
+    if (material.current) material.current.opacity = Math.sin(phase * Math.PI);
+  });
+  return (
+    <group position={[start, 1.17, z]}>
+      <group ref={group}>
+        <mesh geometry={ARROW_SHAPE} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+          <meshBasicMaterial
+            ref={material}
+            color="#f7c948"
+            transparent
+            opacity={0.9}
+            depthWrite={false}
+            toneMapped={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
+    </group>
   );
 }
 
@@ -367,6 +395,8 @@ function Plant({
     if (!model) return;
     for (const [id, root] of roots.current) {
       root.visible = id === 'E01' ? shell : id !== REPLACED_ID;
+      const offset = UNMOVED_IDS.has(id) ? ([0, 0, 0] as Point) : MODEL_OFFSET;
+      root.position.set(offset[0], offset[1], offset[2]);
       const stock = ['E02', 'E03', 'E04', 'E05'].includes(id);
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -429,7 +459,7 @@ function Bottles({ simulation }: Pick<Props, 'simulation'>) {
       dummy.current.quaternion.setFromUnitVectors(up.current, direction.current);
       dummy.current.updateMatrix();
       body.current.setMatrixAt(index, dummy.current.matrix);
-      dummy.current.position.addScaledVector(direction.current, 0.23);
+      dummy.current.position.addScaledVector(direction.current, 0.161);
       dummy.current.updateMatrix();
       neck.current.setMatrixAt(index, dummy.current.matrix);
       color.current.set(MATERIALS[unit.grade].color);
@@ -446,11 +476,11 @@ function Bottles({ simulation }: Pick<Props, 'simulation'>) {
   return (
     <>
       <instancedMesh ref={body} args={[undefined, undefined, 2048]} frustumCulled={false} renderOrder={4}>
-        <capsuleGeometry args={[0.115, 0.24, 3, 8]} />
+        <capsuleGeometry args={[0.0805, 0.168, 3, 8]} />
         <meshStandardMaterial roughness={0.25} metalness={0.06} emissive="#ffffff" emissiveIntensity={0.15} />
       </instancedMesh>
       <instancedMesh ref={neck} args={[undefined, undefined, 2048]} frustumCulled={false} renderOrder={4}>
-        <cylinderGeometry args={[0.045, 0.07, 0.12, 6]} />
+        <cylinderGeometry args={[0.0315, 0.049, 0.084, 6]} />
         <meshStandardMaterial roughness={0.3} />
       </instancedMesh>
     </>
@@ -781,9 +811,10 @@ function CameraRig({ selected, view }: Pick<Props, 'selected' | 'view'>) {
   const { camera, size } = useThree();
   useEffect(() => {
     const fit = Math.max(1, Math.min(1.5, size.height / Math.max(1, size.width)));
-    target.current.set(-2.5, 2.5, -0.4);
+    target.current.set(-2.5 + MODEL_OFFSET[0], 2.5, -0.4 + MODEL_OFFSET[2]);
     if (view === 'focus') {
-      target.current.set(...center(selected));
+      const point = center(selected);
+      target.current.set(point[0] + MODEL_OFFSET[0], point[1], point[2] + MODEL_OFFSET[2]);
       const b = cad[selected].bounds,
         span = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]);
       desired.current
@@ -795,7 +826,7 @@ function CameraRig({ selected, view }: Pick<Props, 'selected' | 'view'>) {
         .add(
           view === 'top'
             ? new THREE.Vector3(0, 48 * fit, 0.01)
-            : new THREE.Vector3(25 * fit, 25 * fit, 30 * fit),
+            : new THREE.Vector3(29 * fit, 29 * fit, 35 * fit),
         );
     clock.current = 0;
   }, [selected, view, size.width, size.height]);
@@ -814,7 +845,7 @@ function CameraRig({ selected, view }: Pick<Props, 'selected' | 'view'>) {
       minDistance={5}
       maxDistance={100}
       maxPolarAngle={Math.PI / 2.05}
-      target={[-2.5, 2.5, -0.4]}
+      target={[-2.5 + MODEL_OFFSET[0], 2.5, -0.4 + MODEL_OFFSET[2]]}
       onStart={() => {
         clock.current = 3;
       }}
@@ -867,7 +898,9 @@ function LabelProjector({
         point = smallPosition(grade);
         point[1] += 0.9;
       }
-      vector.current.set(...point).project(camera);
+      vector.current
+        .set(point[0] + MODEL_OFFSET[0], point[1], point[2] + MODEL_OFFSET[2])
+        .project(camera);
       if (
         vector.current.z < -1 ||
         vector.current.z > 1 ||
@@ -911,27 +944,30 @@ export default function ActualScene(props: Props) {
             />
             <meshStandardMaterial color="#53575a" roughness={0.98} metalness={0.02} />
           </mesh>
-          <EquipmentZones />
-          {props.paths &&
-            Object.entries(ROUTES).map(([id, route]) => (
-              <Line
-                key={id}
-                points={route.points}
-                color={routeColor(id)}
-                lineWidth={1.6}
-                transparent
-                opacity={0.35}
-                depthTest={false}
-              />
-            ))}
-          <Bottles simulation={props.simulation} />
-          <WeighingZone />
-          <WeighingStation />
-          <SiloContents {...props} />
-          <DeltaRobot simulation={props.simulation} />
-          <SmallStocks {...props} />
-          <Packing simulation={props.simulation} />
-          <EquipmentMotion simulation={props.simulation} />
+          <group position={MODEL_OFFSET}>
+            <EquipmentZones />
+            {props.paths &&
+              Object.entries(ROUTES).map(([id, route]) => (
+                <Line
+                  key={id}
+                  points={route.points}
+                  color={routeColor(id)}
+                  lineWidth={1.6}
+                  transparent
+                  opacity={0.35}
+                  depthTest={false}
+                />
+              ))}
+            <Bottles simulation={props.simulation} />
+            <EntranceFlowArrow />
+            <WeighingZone />
+            <WeighingStation />
+            <SiloContents {...props} />
+            <DeltaRobot simulation={props.simulation} />
+            <SmallStocks {...props} />
+            <Packing simulation={props.simulation} />
+            <EquipmentMotion simulation={props.simulation} />
+          </group>
           <CameraRig selected={props.selected} view={props.view} />
           <LabelProjector simulation={props.simulation} selected={props.selected} elements={elements} />
         </SceneBoundary>
