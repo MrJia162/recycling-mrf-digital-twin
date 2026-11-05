@@ -5,11 +5,12 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Line, OrbitControls } from '@react-three/drei';
+import { Html, Line, OrbitControls } from '@react-three/drei';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
@@ -21,6 +22,7 @@ import {
   MANUAL_PATH,
   MATERIALS,
   ROUTES,
+  SMALL_CAPACITY,
   SMALL_GRADES,
   along,
   center,
@@ -39,6 +41,7 @@ interface Props {
   xray: boolean;
   paths: boolean;
   shell: boolean;
+  axes: boolean;
   view: CameraView;
 }
 function routeColor(id: string) {
@@ -69,6 +72,92 @@ const MODEL_OFFSET: Point = [
   0,
   cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
 ];
+function CoordinateFrame() {
+  const b = cad.E01.bounds,
+    y = 1.22,
+    cx = (b[0] + b[3]) / 2,
+    cz = b[5] - 8,
+    half = 8;
+  const label: CSSProperties = {
+    padding: '1px 6px',
+    borderRadius: 4,
+    background: 'rgba(9, 26, 34, 0.82)',
+    border: '1px solid rgba(255, 255, 255, 0.18)',
+    color: '#eaf4f7',
+    font: '600 11px/1.5 ui-monospace, Consolas, monospace',
+    pointerEvents: 'none',
+    userSelect: 'none',
+    whiteSpace: 'nowrap',
+  };
+  return (
+    <group>
+      <Line
+        points={[
+          [cx - half, y, cz],
+          [cx + half, y, cz],
+        ]}
+        color="#ff6b6b"
+        lineWidth={3}
+        transparent
+        opacity={0.95}
+        depthTest={false}
+      />
+      <Line
+        points={[
+          [cx, y, cz - half],
+          [cx, y, cz + half],
+        ]}
+        color="#5aa9ff"
+        lineWidth={3}
+        transparent
+        opacity={0.95}
+        depthTest={false}
+      />
+      <Line
+        points={[
+          [cx, y, cz],
+          [cx, y + 2.6, cz],
+        ]}
+        color="#6ee7a8"
+        lineWidth={2}
+        transparent
+        opacity={0.95}
+        depthTest={false}
+      />
+      <mesh position={[cx + half, y, cz]} rotation={[0, 0, -Math.PI / 2]}>
+        <coneGeometry args={[0.3, 0.9, 12]} />
+        <meshBasicMaterial color="#ff6b6b" toneMapped={false} depthTest={false} />
+      </mesh>
+      <mesh position={[cx, y, cz + half]} rotation={[Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[0.3, 0.9, 12]} />
+        <meshBasicMaterial color="#5aa9ff" toneMapped={false} depthTest={false} />
+      </mesh>
+      <mesh position={[cx, y + 2.6, cz]}>
+        <coneGeometry args={[0.22, 0.6, 12]} />
+        <meshBasicMaterial color="#6ee7a8" toneMapped={false} depthTest={false} />
+      </mesh>
+      <Html position={[cx + half + 0.7, y + 0.6, cz]} center>
+        <span style={{ ...label, color: '#ff9a9a' }}>+X</span>
+      </Html>
+      <Html position={[cx - half - 0.7, y + 0.6, cz]} center>
+        <span style={{ ...label, color: '#ff9a9a' }}>-X</span>
+      </Html>
+      <Html position={[cx, y + 0.6, cz + half + 0.7]} center>
+        <span style={{ ...label, color: '#9bc8ff' }}>+Z</span>
+      </Html>
+      <Html position={[cx, y + 0.6, cz - half - 0.7]} center>
+        <span style={{ ...label, color: '#9bc8ff' }}>-Z</span>
+      </Html>
+      <Html position={[cx, y + 3.2, cz]} center>
+        <span style={{ ...label, color: '#8ef0bb' }}>+Y</span>
+      </Html>
+      <Html position={[cx, y + 0.6, cz]} center>
+        <span style={label}>O</span>
+      </Html>
+    </group>
+  );
+}
+
 const ZONE_MARGIN = 0.22;
 const ZONE_Y = 1.19;
 const ZONE_EPSILON = 1e-6;
@@ -643,6 +732,20 @@ function Worker({ position, simulation }: { position: Point; simulation: ActualS
   );
 }
 
+const FUNNEL_LABEL_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '1px 5px',
+  borderRadius: 3,
+  background: 'rgba(9, 26, 34, 0.8)',
+  border: '1px solid rgba(255, 255, 255, 0.9)',
+  color: '#eaf4f7',
+  font: '600 10px/1.4 "Microsoft YaHei", "PingFang SC", sans-serif',
+  pointerEvents: 'none',
+  userSelect: 'none',
+  whiteSpace: 'nowrap',
+};
 function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
   const fills = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
@@ -654,9 +757,10 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
   return (
     <>
       {SMALL_GRADES.map((grade) => {
-        const p = smallPosition(grade);
+        const p = smallPosition(grade),
+          manual = grade !== 'GREEN' && grade !== 'BROWN';
         return (
-          <group key={grade} position={p}>
+          <group key={grade} position={p} scale={manual ? 1.2 : 1}>
             <mesh position={[0, 0.28, 0]}>
               <boxGeometry args={[0.66, 0.56, 0.6]} />
               <meshStandardMaterial color="#53727e" wireframe />
@@ -671,6 +775,28 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
               <meshStandardMaterial color={MATERIALS[grade].color} />
             </mesh>
           </group>
+        );
+      })}
+      {SMALL_GRADES.filter((grade) => grade !== 'GREEN' && grade !== 'BROWN').map((grade) => {
+        const p = smallPosition(grade);
+        return (
+          <Html key={`label-${grade}`} position={[p[0], 4, p[2]]} center>
+            <span style={FUNNEL_LABEL_STYLE}>
+              <i
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  background: MATERIALS[grade].color,
+                  flexShrink: 0,
+                }}
+              />
+              {MATERIALS[grade].name}
+              <b style={{ color: '#9fb7bf', fontWeight: 600 }}>
+                {Math.round((simulation.current.stocks[grade].length / SMALL_CAPACITY) * 100)}%
+              </b>
+            </span>
+          </Html>
         );
       })}
       {[-4.8, -3.3, -1.9].map((z) => (
@@ -723,7 +849,7 @@ function Packing({ simulation }: Pick<Props, 'simulation'>) {
         <boxGeometry args={[0.2, 1.2, 1.2]} />
         <meshStandardMaterial color="#5bdec0" metalness={0.5} />
       </mesh>
-      <instancedMesh ref={bales} args={[undefined, undefined, 24]} frustumCulled={false}>
+      <instancedMesh ref={bales} args={[undefined, undefined, 24]} frustumCulled={false} visible={false}>
         <boxGeometry args={[0.9, 0.65, 0.85]} />
         <meshStandardMaterial roughness={0.85} />
       </instancedMesh>
@@ -889,11 +1015,8 @@ function LabelProjector({
         element.hidden = false;
       } else {
         const grade = SMALL_GRADES.find((grade) => grade === id);
-        if (!grade) continue;
-        element.hidden = !(
-          (selected === 'E14' && !['GREEN', 'BROWN'].includes(grade)) ||
-          (selected === 'E15' && ['GREEN', 'BROWN'].includes(grade))
-        );
+        if (!grade || (grade !== 'GREEN' && grade !== 'BROWN')) continue;
+        element.hidden = selected !== 'E15';
         if (element.hidden) continue;
         point = smallPosition(grade);
         point[1] += 0.9;
@@ -912,7 +1035,10 @@ function LabelProjector({
       }
       const x = Math.max(55, Math.min(size.width - 55, ((vector.current.x + 1) / 2) * size.width));
       let y = Math.max(70, ((1 - vector.current.y) / 2) * size.height);
-      while (occupied.some((p) => Math.abs(p.x - x) < 100 && Math.abs(p.y - y) < 25)) y -= 27;
+      const direction = y < 120 ? 1 : -1;
+      while (occupied.some((p) => Math.abs(p.x - x) < 100 && Math.abs(p.y - y) < 25))
+        y += direction * 27;
+      y = Math.max(24, Math.min(size.height - 24, y));
       occupied.push({ x, y });
       element.style.left = `${x}px`;
       element.style.top = `${y}px`;
@@ -944,6 +1070,7 @@ export default function ActualScene(props: Props) {
             />
             <meshStandardMaterial color="#53575a" roughness={0.98} metalness={0.02} />
           </mesh>
+          {props.axes && <CoordinateFrame />}
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
             {props.paths &&

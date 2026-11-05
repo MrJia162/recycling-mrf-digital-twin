@@ -51,11 +51,17 @@ export function center(id: EquipmentId): Point {
   const point = cad[id].center;
   return [point[0], point[1], point[2]];
 }
+const MANUAL_FUNNELS: Record<Exclude<SmallGrade, 'GREEN' | 'BROWN'>, Point> = {
+  BIG_WHITE: [-4.37, 1.5, -2.53],
+  SMALL_WHITE: [-4.37, 1.5, -4.23],
+  FLOWER: [-3.28, 1.5, -1.41],
+  OIL: [-2.19, 1.5, -2.53],
+  CAN: [-2.19, 1.5, -4.23],
+};
 export function smallPosition(grade: SmallGrade): Point {
   if (grade === 'GREEN') return [-5.8, 1.2, 6.8];
   if (grade === 'BROWN') return [-4.5, 1.2, 6.8];
-  const index = Math.max(0, SMALL_GRADES.indexOf(grade) - 2);
-  return [-4.7 + index * 0.8, 3.25, -1.15];
+  return MANUAL_FUNNELS[grade];
 }
 export const ROUTES = {
   feed: {

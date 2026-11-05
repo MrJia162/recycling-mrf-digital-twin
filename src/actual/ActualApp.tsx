@@ -61,7 +61,8 @@ export default function ActualApp() {
   const [view, setView] = useState<CameraView>('overview');
   const [xray, setXray] = useState(true),
     [paths, setPaths] = useState(true),
-    [shell, setShell] = useState(false);
+    [shell, setShell] = useState(false),
+    [axes, setAxes] = useState(true);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
     let handle = 0,
@@ -99,7 +100,6 @@ export default function ActualApp() {
   }, []);
   const selectDevice = useCallback((id: EquipmentId) => {
     setSelected(id);
-    setView('focus');
   }, []);
   const seek = (time: number) => {
     simulation.seek(time);
@@ -180,6 +180,7 @@ export default function ActualApp() {
             xray={xray}
             paths={paths}
             shell={shell}
+            axes={axes}
             view={view}
           />
           <div className="actual-view-tools" aria-label="三维视图控制">
@@ -205,6 +206,9 @@ export default function ActualApp() {
               </button>
               <button aria-pressed={shell} onClick={() => setShell((value) => !value)}>
                 厂房
+              </button>
+              <button aria-pressed={axes} onClick={() => setAxes((value) => !value)}>
+                坐标
               </button>
             </div>
           </div>
