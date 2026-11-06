@@ -21,6 +21,7 @@ import {
   EQUIPMENT_IDS,
   MANUAL_PATH,
   MATERIALS,
+  PLAYBACK_HORIZON,
   ROUTES,
   SMALL_GRADES,
   along,
@@ -835,11 +836,15 @@ function ManualTransferRoute({
 function Plant({
   selected,
   onSelect,
+  view,
   xray,
   paths,
   shell,
   onLoad,
-}: Pick<Props, "selected" | "onSelect" | "xray" | "paths" | "shell"> & {
+}: Pick<
+  Props,
+  "selected" | "onSelect" | "view" | "xray" | "paths" | "shell"
+> & {
   onLoad: (text: string) => void;
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
@@ -958,6 +963,7 @@ function Plant({
         object: THREE.Object3D;
         stopPropagation: () => void;
       }) => {
+        if (view !== "focus") return;
         let object: THREE.Object3D | null = event.object;
         while (object && !(object.name in EQUIPMENT)) object = object.parent;
         if (object) {
@@ -1054,7 +1060,8 @@ const SILOS = ["E02", "E03", "E04", "E05"] as const;
 function SiloContents({
   simulation,
   onSelect,
-}: Pick<Props, "simulation" | "onSelect">) {
+  view,
+}: Pick<Props, "simulation" | "onSelect" | "view">) {
   const fills = useRef(new Map<string, THREE.Mesh>()),
     gates = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
@@ -1093,6 +1100,7 @@ function SiloContents({
               }}
               renderOrder={2}
               onClick={(event) => {
+                if (view !== "focus") return;
                 event.stopPropagation();
                 onSelect(id);
               }}
@@ -1239,6 +1247,175 @@ function Worker({
   );
 }
 
+const STACKING_PICKUP_TIME = 0.6;
+const STACKING_PLACE_TIME = 0.8;
+const STACKING_WALK_TIME = 8.7;
+const STACKING_GAP_TIME = 0.6;
+const STACKING_ACTIVE_TIME =
+  STACKING_PICKUP_TIME + STACKING_WALK_TIME + STACKING_PLACE_TIME;
+const STACKING_TRIP_TIME = STACKING_ACTIVE_TIME + STACKING_GAP_TIME;
+const STACKING_PICKUP: Point = [
+  7.5 + MODEL_OFFSET[0],
+  1.2,
+  2.2 + MODEL_OFFSET[2],
+];
+const STACKING_LANE_X = 8 + MODEL_OFFSET[0];
+const STACKING_SPOTS = (() => {
+  let seed = 20261106;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const zones: typeof STORAGE_ZONES = [];
+  const pool = [...STORAGE_ZONES];
+  while (zones.length < 12) {
+    if (!pool.length) pool.push(...STORAGE_ZONES);
+    const index = Math.floor(random() * pool.length);
+    zones.push(pool.splice(index, 1)[0]);
+  }
+  return zones.map((zone) => {
+    const front = STORAGE_START_Z - zone.bay * STORAGE_BAY_WIDTH;
+    const x =
+      random() < 0.5 ? STORAGE_MIN_X + 0.6 : STORAGE_MAX_X - 0.6;
+    const z = front - 1 - random() * (STORAGE_BAY_WIDTH - 2);
+    const path: Point[] = [
+      STACKING_PICKUP,
+      [STACKING_LANE_X, 1.2, STACKING_PICKUP[2]],
+      [STACKING_LANE_X, 1.2, z],
+      [x - 0.46, 1.2, z],
+    ];
+    return { x, z, path };
+  });
+})();
+function stackingTrips(bales: { id: number; at: number; grade: Grade }[]) {
+  const trips: {
+    baleId: number;
+    grade: Grade;
+    start: number;
+    spot: (typeof STACKING_SPOTS)[number];
+  }[] = [];
+  let cursor = 0;
+  for (const bale of bales) {
+    if (trips.length >= STACKING_SPOTS.length) break;
+    const spot = STACKING_SPOTS[trips.length % STACKING_SPOTS.length];
+    const start = Math.max(cursor, bale.at);
+    if (start + STACKING_ACTIVE_TIME > PLAYBACK_HORIZON) break;
+    trips.push({ baleId: bale.id, grade: bale.grade, start, spot });
+    cursor = start + STACKING_TRIP_TIME;
+  }
+  return trips;
+}
+function PostBalerStacking({ simulation }: Pick<Props, "simulation">) {
+  const worker = useRef<THREE.Group>(null);
+  const carried = useRef<THREE.Mesh>(null);
+  const carriedMaterial = useRef<THREE.MeshStandardMaterial>(null);
+  const stacks = useRef<THREE.InstancedMesh>(null);
+  const dummy = useRef(new THREE.Object3D());
+  const color = useRef(new THREE.Color());
+  useFrame(() => {
+    if (!worker.current || !carried.current || !stacks.current) return;
+    const state = simulation.current;
+    const trips = stackingTrips(state.bales);
+    let completed = 0;
+    while (
+      completed < trips.length &&
+      state.time >= trips[completed].start + STACKING_ACTIVE_TIME
+    )
+      completed += 1;
+    for (let index = 0; index < completed; index += 1) {
+      const trip = trips[index];
+      dummy.current.position.set(trip.spot.x, 1.49, trip.spot.z);
+      dummy.current.rotation.set(0, 0, 0);
+      dummy.current.scale.setScalar(1);
+      dummy.current.updateMatrix();
+      stacks.current.setMatrixAt(index, dummy.current.matrix);
+      color.current.set(MATERIALS[trip.grade].color);
+      stacks.current.setColorAt(index, color.current);
+    }
+    stacks.current.count = completed;
+    stacks.current.instanceMatrix.needsUpdate = true;
+    if (stacks.current.instanceColor)
+      stacks.current.instanceColor.needsUpdate = true;
+    if (state.time >= PLAYBACK_HORIZON) {
+      worker.current.visible = false;
+      return;
+    }
+    if (!trips.length) {
+      worker.current.visible = false;
+      return;
+    }
+    const trip = trips.find(
+      (entry) =>
+        state.time >= entry.start &&
+        state.time < entry.start + STACKING_TRIP_TIME,
+    );
+    if (!trip) {
+      worker.current.visible = true;
+      worker.current.position.set(...STACKING_PICKUP);
+      worker.current.rotation.y = -Math.PI / 2;
+      carried.current.visible = false;
+      return;
+    }
+    const local = state.time - trip.start;
+    const walkEnd = STACKING_PICKUP_TIME + STACKING_WALK_TIME;
+    const placeEnd = walkEnd + STACKING_PLACE_TIME;
+    if (local >= placeEnd) {
+      worker.current.visible = false;
+      return;
+    }
+    worker.current.visible = true;
+    let position: Point;
+    let ahead: Point;
+    if (local < STACKING_PICKUP_TIME) {
+      position = trip.spot.path[0];
+      ahead = trip.spot.path[1];
+    } else if (local < walkEnd) {
+      const progress = (local - STACKING_PICKUP_TIME) / STACKING_WALK_TIME;
+      position = along(trip.spot.path, progress);
+      ahead = along(trip.spot.path, Math.min(1, progress + 0.02));
+      position[1] += Math.sin(progress * 42) * 0.03;
+    } else {
+      position = trip.spot.path[trip.spot.path.length - 1];
+      ahead = position;
+    }
+    worker.current.position.set(...position);
+    const dx = ahead[0] - position[0];
+    const dz = ahead[2] - position[2];
+    if (Math.hypot(dx, dz) > 0.001)
+      worker.current.rotation.y = Math.atan2(dx, dz);
+    const lowering =
+      local < walkEnd
+        ? 0
+        : Math.min(1, (local - walkEnd) / STACKING_PLACE_TIME);
+    carried.current.visible = local < placeEnd;
+    carried.current.position.set(0, 1.02 - lowering * 0.72, 0.46);
+    carriedMaterial.current?.color.set(MATERIALS[trip.grade].color);
+  });
+  return (
+    <group>
+      <group ref={worker} visible={false}>
+        <Worker position={[0, 0, 0]} simulation={simulation} />
+        <mesh ref={carried} position={[0, 1.02, 0.46]} visible={false}>
+          <boxGeometry args={[0.72, 0.5, 0.62]} />
+          <meshStandardMaterial
+            ref={carriedMaterial}
+            roughness={0.85}
+            metalness={0.05}
+          />
+        </mesh>
+      </group>
+      <instancedMesh
+        ref={stacks}
+        args={[undefined, undefined, STACKING_SPOTS.length]}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[0.9, 0.65, 0.85]} />
+        <meshStandardMaterial roughness={0.85} metalness={0.05} />
+      </instancedMesh>
+    </group>
+  );
+}
+
 const FUNNEL_LABEL_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -1340,20 +1517,29 @@ function Packing({ simulation }: Pick<Props, "simulation">) {
         cart.current.position.set(...along(MANUAL_PATH, job.elapsed / 14));
     }
     if (!bales.current) return;
-    const visible = state.bales.slice(-24);
-    visible.forEach((bale, index) => {
+    const carried = new Set(
+      stackingTrips(state.bales)
+        .filter((trip) => state.time >= trip.start)
+        .map((trip) => trip.baleId),
+    );
+    let index = 0;
+    for (const bale of state.bales.slice(-24)) {
+      if (carried.has(bale.id)) continue;
+      const slot = bale.id % 24;
       const progress = Math.min(1, (state.time - bale.at) / 2);
       dummy.current.position.set(
-        -5 + progress * (-1.2 - (index % 3)),
-        1.6 + Math.floor(index / 6) * 0.7 * progress,
-        1.85 + Math.floor((index % 6) / 3) * 1.1 * progress,
+        5.9 + progress * (1.2 + (slot % 3)),
+        1.6 + Math.floor(slot / 6) * 0.7 * progress,
+        1.85 + Math.floor((slot % 6) / 3) * 1.1 * progress,
       );
       dummy.current.updateMatrix();
-      bales.current!.setMatrixAt(index, dummy.current.matrix);
+      bales.current.setMatrixAt(index, dummy.current.matrix);
       color.current.set(MATERIALS[bale.grade].color);
-      bales.current!.setColorAt(index, color.current);
-    });
-    bales.current.count = visible.length;
+      bales.current.setColorAt(index, color.current);
+      index += 1;
+    }
+    bales.current.count = index;
+    bales.current.visible = index > 0;
     bales.current.instanceMatrix.needsUpdate = true;
     if (bales.current.instanceColor)
       bales.current.instanceColor.needsUpdate = true;
@@ -1466,6 +1652,7 @@ function CameraRig({ selected, view }: Pick<Props, "selected" | "view">) {
   const desired = useRef(new THREE.Vector3()),
     target = useRef(new THREE.Vector3());
   const { camera, size } = useThree();
+  const focusKey = view === "focus" ? selected : "";
   useEffect(() => {
     const fit = Math.max(
       1,
@@ -1497,7 +1684,7 @@ function CameraRig({ selected, view }: Pick<Props, "selected" | "view">) {
             : new THREE.Vector3(29 * fit, 29 * fit, 35 * fit),
         );
     clock.current = 0;
-  }, [selected, view, size.width, size.height]);
+  }, [focusKey, view, size.width, size.height]);
   useFrame((_, delta) => {
     if (!controls.current || clock.current >= 2.8) return;
     clock.current += delta;
@@ -1538,10 +1725,9 @@ class SceneBoundary extends Component<
 }
 
 function LabelProjector({
-  simulation,
   selected,
   elements,
-}: Pick<Props, "simulation" | "selected"> & {
+}: Pick<Props, "selected"> & {
   elements: RefObject<Map<string, HTMLElement>>;
 }) {
   const { camera, size } = useThree();
@@ -1550,13 +1736,7 @@ function LabelProjector({
     const occupied: { x: number; y: number }[] = [];
     for (const [id, element] of elements.current) {
       let point: Point;
-      if (id === "cart") {
-        const job = simulation.current.job;
-        element.hidden = job?.phase !== "MANUAL_TRANSFER";
-        if (element.hidden || !job) continue;
-        point = along(MANUAL_PATH, job.elapsed / 14);
-        point[1] += 2;
-      } else if (SILOS.includes(id as (typeof SILOS)[number])) {
+      if (SILOS.includes(id as (typeof SILOS)[number])) {
         point = center(id as EquipmentId);
         point[1] = 7.3;
         element.hidden = false;
@@ -1643,6 +1823,7 @@ export default function ActualScene(props: Props) {
             <meshStandardMaterial color="#005c0c" roughness={1} metalness={0} />
           </mesh>
           <StorageZones />
+          <PostBalerStacking simulation={props.simulation} />
           {props.axes && <CoordinateFrame />}
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
@@ -1663,7 +1844,6 @@ export default function ActualScene(props: Props) {
           </group>
           <CameraRig selected={props.selected} view={props.view} />
           <LabelProjector
-            simulation={props.simulation}
             selected={props.selected}
             elements={elements}
           />
@@ -1715,16 +1895,6 @@ export default function ActualScene(props: Props) {
             {MATERIALS[grade].name}
           </span>
         ))}
-        <span
-          ref={(node) => {
-            if (node) elements.current.set("cart", node);
-            else elements.current.delete("cart");
-          }}
-          className="stock-label"
-          hidden
-        >
-          人工转运至打包机
-        </span>
       </div>
       <div className="model-status">
         <span />

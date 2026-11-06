@@ -6,8 +6,8 @@ import {
   CAPACITY,
   EQUIPMENT,
   EQUIPMENT_IDS,
-  HORIZON,
   MATERIALS,
+  PLAYBACK_HORIZON,
   PARAMETER_LIMITS,
   SMALL_GRADES,
   type EquipmentId,
@@ -78,14 +78,17 @@ export default function ActualApp() {
       last = now;
       if (!playing || document.hidden) return;
       simulation.advanceBy(
-        Math.min(delta * speed, Math.max(0, HORIZON - simulation.current.time)),
+        Math.min(
+          delta * speed,
+          Math.max(0, PLAYBACK_HORIZON - simulation.current.time),
+        ),
       );
       uiTime += delta;
       if (uiTime >= 0.12) {
         refresh();
         uiTime = 0;
       }
-      if (simulation.current.time >= HORIZON) {
+      if (simulation.current.time >= PLAYBACK_HORIZON) {
         setPlaying(false);
         refresh();
       }
@@ -121,7 +124,7 @@ export default function ActualApp() {
   const job = state.job;
   const gate = openGate(state) ? `${openGate(state)} 开启` : "两仓关闭";
   const play = () => {
-    if (!playing && state.time >= HORIZON) simulation.seek(0);
+    if (!playing && state.time >= PLAYBACK_HORIZON) simulation.seek(0);
     setPlaying((value) => !value);
     refresh();
   };
@@ -389,7 +392,7 @@ export default function ActualApp() {
                 </p>
               ))}
             </div>
-            <small>每 3 批申请人工转运，共用同一打包资源。</small>
+            <small>每 4 批申请人工转运，共用同一打包资源。</small>
           </details> */}
 
           <details className="actual-parameters">
@@ -457,7 +460,11 @@ export default function ActualApp() {
             className="play-button"
             onClick={play}
             aria-label={
-              playing ? "暂停" : state.time >= HORIZON ? "重播" : "播放"
+              playing
+                ? "暂停"
+                : state.time >= PLAYBACK_HORIZON
+                  ? "重播"
+                  : "播放"
             }
           >
             {playing ? (
@@ -490,7 +497,7 @@ export default function ActualApp() {
           </select>
           <span className="playback-time">
             {formatTime(state.time)}
-            <small> / {formatTime(HORIZON)}</small>
+            <small> / {formatTime(PLAYBACK_HORIZON)}</small>
           </span>
         </div>
         <div className="actual-timeline">
@@ -501,7 +508,7 @@ export default function ActualApp() {
             id="actual-time"
             type="range"
             min={0}
-            max={HORIZON}
+            max={PLAYBACK_HORIZON}
             step={0.1}
             value={state.time}
             onChange={(event) => seek(Number(event.target.value))}
@@ -511,7 +518,7 @@ export default function ActualApp() {
               <button
                 key={stop.time}
                 onClick={() => seek(stop.time)}
-                style={{ left: `${(stop.time / HORIZON) * 100}%` }}
+                style={{ left: `${(stop.time / PLAYBACK_HORIZON) * 100}%` }}
               >
                 {stop.label}
               </button>
