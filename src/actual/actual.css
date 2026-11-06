@@ -201,6 +201,7 @@ h1 span {
   justify-content: space-between;
   gap: 10px;
   pointer-events: none;
+  z-index: 20;
 }
 .actual-view-tools > div {
   display: flex;
@@ -276,6 +277,52 @@ h1 span {
   display: block;
   border-radius: 2px;
   box-shadow: 0 0 0 1px #47708344;
+}
+.device-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.device-marker-name {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(9, 26, 34, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #eaf4f7;
+  font: 600 10px/1.5 "Microsoft YaHei", "PingFang SC", sans-serif;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.device-pin {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
+}
+.device-pin i {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 9px solid rgba(190, 198, 204, 0.5);
+  transition:
+    transform 0.15s,
+    border-top-color 0.15s;
+}
+.device-pin:hover i {
+  transform: translateY(-2px);
+  border-top-color: rgba(220, 226, 230, 0.72);
+}
+.device-pin[aria-pressed="true"] i {
+  border-top-color: #4dff8f;
 }
 .silo-label {
   border: 1px solid #dcebef;

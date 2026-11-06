@@ -194,12 +194,12 @@ export default function ActualApp() {
               ))}
             </div>
             <div>
-              {/* <button
+              <button
                 aria-pressed={xray}
                 onClick={() => setXray((value) => !value)}
               >
                 工艺透视
-              </button> */}
+              </button>
               <button
                 aria-pressed={paths}
                 onClick={() => setPaths((value) => !value)}

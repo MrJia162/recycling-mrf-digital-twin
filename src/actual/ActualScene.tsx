@@ -32,7 +32,7 @@ import {
   type Point,
 } from "./process";
 import cad from "./cad-layout.json";
-import { batchPlant } from "./cad";
+import { batchPlant, extractBalerDoor } from "./cad";
 
 export type CameraView = "overview" | "top" | "focus";
 interface Props {
@@ -833,22 +833,30 @@ function ManualTransferRoute({
   );
 }
 
+const BALER_DOOR_TRAVEL = 1.63;
 function Plant({
   selected,
-  onSelect,
-  view,
   xray,
   paths,
   shell,
+  simulation,
   onLoad,
-}: Pick<
-  Props,
-  "selected" | "onSelect" | "view" | "xray" | "paths" | "shell"
-> & {
+}: Pick<Props, "selected" | "xray" | "paths" | "shell" | "simulation"> & {
   onLoad: (text: string) => void;
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
   const roots = useRef(new Map<string, THREE.Object3D>());
+  const balerDoor = useRef<THREE.Group | null>(null);
+  useFrame((_, delta) => {
+    if (!balerDoor.current) return;
+    const closed = simulation.current.job?.phase === "COMPRESSING";
+    balerDoor.current.position.y = THREE.MathUtils.damp(
+      balerDoor.current.position.y,
+      closed ? -BALER_DOOR_TRAVEL : 0,
+      8,
+      delta,
+    );
+  });
   useEffect(() => {
     let cancelled = false;
     let loaded: THREE.Group | null = null;
@@ -860,7 +868,15 @@ function Plant({
         if (cancelled) return;
         let batched: THREE.Group;
         try {
+          const door = extractBalerDoor(gltf.scene);
           batched = batchPlant(gltf.scene);
+          if (door) {
+            const baler = batched.getObjectByName("E13");
+            if (baler) {
+              baler.add(door);
+              balerDoor.current = door;
+            }
+          }
         } catch {
           onLoad("CAD 解析失败，请检查本地模型；仿真与面板仍可操作。");
           return;
@@ -956,23 +972,7 @@ function Plant({
     }
   }, [model, xray, paths, shell, selected]);
   if (!model) return null;
-  return (
-    <primitive
-      object={model}
-      onClick={(event: {
-        object: THREE.Object3D;
-        stopPropagation: () => void;
-      }) => {
-        if (view !== "focus") return;
-        let object: THREE.Object3D | null = event.object;
-        while (object && !(object.name in EQUIPMENT)) object = object.parent;
-        if (object) {
-          event.stopPropagation();
-          onSelect(object.name as EquipmentId);
-        }
-      }}
-    />
-  );
+  return <primitive object={model} />;
 }
 
 function Bottles({ simulation }: Pick<Props, "simulation">) {
@@ -1057,11 +1057,7 @@ function Bottles({ simulation }: Pick<Props, "simulation">) {
 }
 
 const SILOS = ["E02", "E03", "E04", "E05"] as const;
-function SiloContents({
-  simulation,
-  onSelect,
-  view,
-}: Pick<Props, "simulation" | "onSelect" | "view">) {
+function SiloContents({ simulation }: Pick<Props, "simulation">) {
   const fills = useRef(new Map<string, THREE.Mesh>()),
     gates = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
@@ -1099,11 +1095,6 @@ function SiloContents({
                 if (node) fills.current.set(id, node);
               }}
               renderOrder={2}
-              onClick={(event) => {
-                if (view !== "focus") return;
-                event.stopPropagation();
-                onSelect(id);
-              }}
             >
               <boxGeometry args={[3.35, 1, 3.35]} />
               <meshStandardMaterial
@@ -1433,7 +1424,10 @@ const FUNNEL_LABEL_STYLE: CSSProperties = {
 const MANUAL_GRADES = SMALL_GRADES.filter(
   (grade) => grade !== "GREEN" && grade !== "BROWN",
 );
-function SmallStocks({ simulation }: Pick<Props, "simulation">) {
+function SmallStocks({
+  simulation,
+  view,
+}: Pick<Props, "simulation" | "view">) {
   const fills = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
     for (const grade of SMALL_GRADES) {
@@ -1468,25 +1462,26 @@ function SmallStocks({ simulation }: Pick<Props, "simulation">) {
           </group>
         );
       })}
-      {MANUAL_GRADES.map((grade) => {
-        const p = smallPosition(grade);
-        return (
-          <Html key={`label-${grade}`} position={[p[0], 4, p[2]]} center>
-            <span style={FUNNEL_LABEL_STYLE}>
-              <i
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: MATERIALS[grade].color,
-                  flexShrink: 0,
-                }}
-              />
-              {MATERIALS[grade].name}
-            </span>
-          </Html>
-        );
-      })}
+      {view !== "focus" &&
+        MANUAL_GRADES.map((grade) => {
+          const p = smallPosition(grade);
+          return (
+            <Html key={`label-${grade}`} position={[p[0], 4, p[2]]} center>
+              <span style={FUNNEL_LABEL_STYLE}>
+                <i
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: MATERIALS[grade].color,
+                    flexShrink: 0,
+                  }}
+                />
+                {MATERIALS[grade].name}
+              </span>
+            </Html>
+          );
+        })}
       {[-4.8, -3.3, -1.9].map((z) => (
         <Worker key={z} position={[-4.25, 3.25, z]} simulation={simulation} />
       ))}
@@ -1646,7 +1641,10 @@ function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
   );
 }
 
-function CameraRig({ selected, view }: Pick<Props, "selected" | "view">) {
+function CameraRig({
+  selected,
+  view,
+}: Pick<Props, "selected" | "view">) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null),
     clock = useRef(3);
   const desired = useRef(new THREE.Vector3()),
@@ -1726,8 +1724,9 @@ class SceneBoundary extends Component<
 
 function LabelProjector({
   selected,
+  view,
   elements,
-}: Pick<Props, "selected"> & {
+}: Pick<Props, "selected" | "view"> & {
   elements: RefObject<Map<string, HTMLElement>>;
 }) {
   const { camera, size } = useThree();
@@ -1737,9 +1736,10 @@ function LabelProjector({
     for (const [id, element] of elements.current) {
       let point: Point;
       if (SILOS.includes(id as (typeof SILOS)[number])) {
+        element.hidden = view === "focus";
+        if (element.hidden) continue;
         point = center(id as EquipmentId);
         point[1] = 7.3;
-        element.hidden = false;
       } else {
         const grade = SMALL_GRADES.find((grade) => grade === id);
         if (!grade || (grade !== "GREEN" && grade !== "BROWN")) continue;
@@ -1777,6 +1777,56 @@ function LabelProjector({
     }
   });
   return null;
+}
+
+const DEVICE_PIN_NAMES: Record<EquipmentId, string> = {
+  E02: "三色中转",
+  E03: "杂瓶中转",
+  E04: "3A",
+  E05: "杂色 PET",
+  E06: "上料爬坡机",
+  E07: "杂瓶爬坡机",
+  E08: "输送带",
+  E09: "脱标爬坡机",
+  E10: "链板机",
+  E11: "螺旋上料机",
+  E12: "脱标机",
+  E13: "打包机",
+  E14: "人工分拣平台",
+  E15: "并联机械手",
+  E16: "机械手输送带",
+  E17: "第一台分选机",
+  E18: "第二台分选机",
+};
+function DevicePins({ selected, onSelect }: Pick<Props, "selected" | "onSelect">) {
+  return (
+    <>
+      {EQUIPMENT_IDS.map((id) => {
+        const [x, , z] = center(id);
+        return (
+          <Html
+            key={id}
+            position={[x, cad[id].bounds[4] + 0.55, z]}
+            center
+            zIndexRange={[12, 0]}
+          >
+            <div className="device-marker">
+              <span className="device-marker-name">{DEVICE_PIN_NAMES[id]}</span>
+              <button
+                type="button"
+                className="device-pin"
+                aria-label={`选择 ${id} ${EQUIPMENT[id]}`}
+                aria-pressed={selected === id}
+                onClick={() => onSelect(id)}
+              >
+                <i />
+              </button>
+            </div>
+          </Html>
+        );
+      })}
+    </>
+  );
 }
 
 export default function ActualScene(props: Props) {
@@ -1841,24 +1891,30 @@ export default function ActualScene(props: Props) {
             <SmallStocks {...props} />
             <Packing simulation={props.simulation} />
             <EquipmentMotion simulation={props.simulation} />
+            {props.view === "focus" && (
+              <DevicePins
+                selected={props.selected}
+                onSelect={props.onSelect}
+              />
+            )}
           </group>
           <CameraRig selected={props.selected} view={props.view} />
           <LabelProjector
             selected={props.selected}
+            view={props.view}
             elements={elements}
           />
         </SceneBoundary>
       </Canvas>
       <div className="actual-projected-labels">
         {SILOS.map((id) => (
-          <button
+          <span
             key={id}
             ref={(node) => {
               if (node) elements.current.set(id, node);
               else elements.current.delete(id);
             }}
             className="silo-label"
-            onClick={() => props.onSelect(id)}
           >
             <i
               style={{
@@ -1880,7 +1936,7 @@ export default function ActualScene(props: Props) {
                 : id === "E04"
                   ? "3A"
                   : "杂色 PET"}
-          </button>
+          </span>
         ))}
         {SMALL_GRADES.map((grade) => (
           <span
