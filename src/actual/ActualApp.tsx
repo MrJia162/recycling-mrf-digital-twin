@@ -39,7 +39,6 @@ const STOPS = [
   { time: 35, label: "人工 / 脱标" },
   { time: 60, label: "二次分选" },
   { time: 100, label: "自动打包" },
-  { time: 180, label: "持续运行" },
 ];
 function formatTime(time: number) {
   return `${Math.floor(time / 60)
@@ -390,7 +389,7 @@ export default function ActualApp() {
                 </p>
               ))}
             </div>
-            <small>每 6 批申请人工转运，共用同一打包资源。</small>
+            <small>每 3 批申请人工转运，共用同一打包资源。</small>
           </details> */}
 
           <details className="actual-parameters">

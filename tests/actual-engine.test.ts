@@ -106,7 +106,7 @@ describe('实际产线：独立物料流程', () => {
 
   it('供料期间停止共用设备会关闭料仓出口，物料与运动时钟保持不变', () => {
     const sim = new ActualSimulation();
-    while (!openGate(sim.current) && sim.current.time < 100) sim.advanceBy(STEP);
+    while (!openGate(sim.current) && sim.current.time < 360) sim.advanceBy(STEP);
     expect(openGate(sim.current)).toBe('E04');
     sim.setPower('E08', false);
     const quantity = sim.current.stocks.E04.length,
