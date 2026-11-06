@@ -22,12 +22,12 @@ import {
   MANUAL_PATH,
   MATERIALS,
   ROUTES,
-  SMALL_CAPACITY,
   SMALL_GRADES,
   along,
   center,
   smallPosition,
   type EquipmentId,
+  type Grade,
   type Point,
 } from './process';
 import cad from './cad-layout.json';
@@ -72,6 +72,80 @@ const MODEL_OFFSET: Point = [
   0,
   cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
 ];
+const PARTITION_IDS = ['E19', 'E20', 'E21', 'E22', 'E23', 'E24'];
+const STORAGE_START_Z = cad.E01.bounds[5] - 0.5;
+const STORAGE_BAY_WIDTH = 4;
+const STORAGE_MIN_X = cad.E19.bounds[0];
+const STORAGE_MAX_X = cad.E19.bounds[3];
+const STORAGE_X = (STORAGE_MIN_X + STORAGE_MAX_X) / 2;
+const STORAGE_LINE_Y = 1.19;
+const STORAGE_LABEL_Y = 1.21;
+const PARTITION_OFFSET_Z = Object.fromEntries(
+  PARTITION_IDS.map((id, index) => {
+    const b = cad[id as keyof typeof cad].bounds;
+    return [
+      id,
+      STORAGE_START_Z - (index + 1) * STORAGE_BAY_WIDTH - (b[2] + b[5]) / 2,
+    ];
+  }),
+) as Record<string, number>;
+const STORAGE_ZONES: { grade: Grade; label: string; bay: number }[] = [
+  { grade: 'MIXED', label: '染色PET', bay: 1 },
+  { grade: 'SMALL_WHITE', label: '小白', bay: 2 },
+  { grade: 'BIG_WHITE', label: '大白', bay: 3 },
+  { grade: 'FLOWER', label: '花乙', bay: 4 },
+  { grade: 'OIL', label: '油壶', bay: 5 },
+  { grade: 'CAN', label: '易拉罐', bay: 6 },
+  { grade: '3A', label: '3A', bay: 0 },
+];
+const STORAGE_LABEL_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  color: '#ffd34d',
+  textShadow: '0 1px 3px rgba(0, 0, 0, 0.85)',
+  font: '600 18px/1.2 "Microsoft YaHei", "PingFang SC", sans-serif',
+  pointerEvents: 'none',
+  userSelect: 'none',
+  whiteSpace: 'nowrap',
+};
+function StorageZones() {
+  return (
+    <>
+      {STORAGE_ZONES.map((zone) => {
+        const front = STORAGE_START_Z - zone.bay * STORAGE_BAY_WIDTH;
+        const back = front - STORAGE_BAY_WIDTH;
+        return (
+          <group key={`storage-${zone.grade}`}>
+            <Line
+              points={[
+                [STORAGE_MIN_X, STORAGE_LINE_Y, front],
+                [STORAGE_MAX_X, STORAGE_LINE_Y, front],
+                [STORAGE_MAX_X, STORAGE_LINE_Y, back],
+                [STORAGE_MIN_X, STORAGE_LINE_Y, back],
+                [STORAGE_MIN_X, STORAGE_LINE_Y, front],
+              ]}
+              color="#f7c948"
+              lineWidth={2}
+              dashed
+              dashSize={0.5}
+              gapSize={0.35}
+              transparent
+              opacity={0.95}
+              depthWrite={false}
+            />
+            <Html
+              position={[STORAGE_X, STORAGE_LABEL_Y, (front + back) / 2]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              transform
+            >
+              <span style={STORAGE_LABEL_STYLE}>{zone.label}</span>
+            </Html>
+          </group>
+        );
+      })}
+    </>
+  );
+}
 function CoordinateFrame() {
   const b = cad.E01.bounds,
     y = 1.22,
@@ -484,8 +558,11 @@ function Plant({
     if (!model) return;
     for (const [id, root] of roots.current) {
       root.visible = id === 'E01' ? shell : id !== REPLACED_ID;
-      const offset = UNMOVED_IDS.has(id) ? ([0, 0, 0] as Point) : MODEL_OFFSET;
-      root.position.set(offset[0], offset[1], offset[2]);
+      if (PARTITION_IDS.includes(id)) root.position.set(0, 0, PARTITION_OFFSET_Z[id]);
+      else {
+        const offset = UNMOVED_IDS.has(id) ? ([0, 0, 0] as Point) : MODEL_OFFSET;
+        root.position.set(offset[0], offset[1], offset[2]);
+      }
       const stock = ['E02', 'E03', 'E04', 'E05'].includes(id);
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -746,12 +823,14 @@ const FUNNEL_LABEL_STYLE: CSSProperties = {
   userSelect: 'none',
   whiteSpace: 'nowrap',
 };
+const MANUAL_GRADES = SMALL_GRADES.filter((grade) => grade !== 'GREEN' && grade !== 'BROWN');
 function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
   const fills = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
     for (const grade of SMALL_GRADES) {
       const mesh = fills.current.get(grade);
-      if (mesh) mesh.scale.y = Math.max(0.03, (simulation.current.stocks[grade].length / 24) * 0.5);
+      if (mesh)
+        mesh.scale.y = Math.max(0.03, (simulation.current.stocks[grade].length / 24) * 0.5);
     }
   });
   return (
@@ -777,7 +856,7 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
           </group>
         );
       })}
-      {SMALL_GRADES.filter((grade) => grade !== 'GREEN' && grade !== 'BROWN').map((grade) => {
+      {MANUAL_GRADES.map((grade) => {
         const p = smallPosition(grade);
         return (
           <Html key={`label-${grade}`} position={[p[0], 4, p[2]]} center>
@@ -792,9 +871,6 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
                 }}
               />
               {MATERIALS[grade].name}
-              <b style={{ color: '#9fb7bf', fontWeight: 600 }}>
-                {Math.round((simulation.current.stocks[grade].length / SMALL_CAPACITY) * 100)}%
-              </b>
             </span>
           </Html>
         );
@@ -1068,8 +1144,9 @@ export default function ActualScene(props: Props) {
             <planeGeometry
               args={[cad.E01.bounds[3] - cad.E01.bounds[0], cad.E01.bounds[5] - cad.E01.bounds[2]]}
             />
-            <meshStandardMaterial color="#53575a" roughness={0.98} metalness={0.02} />
+            <meshStandardMaterial color="#005c0c" roughness={1} metalness={0} />
           </mesh>
+          <StorageZones />
           {props.axes && <CoordinateFrame />}
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
