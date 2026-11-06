@@ -8,13 +8,13 @@ import {
   type CSSProperties,
   type ReactNode,
   type RefObject,
-} from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Html, Line, OrbitControls } from '@react-three/drei';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import * as THREE from 'three';
-import { ActualSimulation, openGate } from './engine';
+} from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Html, Line, OrbitControls } from "@react-three/drei";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import * as THREE from "three";
+import { ActualSimulation, openGate } from "./engine";
 import {
   CAPACITY,
   EQUIPMENT,
@@ -29,11 +29,11 @@ import {
   type EquipmentId,
   type Grade,
   type Point,
-} from './process';
-import cad from './cad-layout.json';
-import { batchPlant } from './cad';
+} from "./process";
+import cad from "./cad-layout.json";
+import { batchPlant } from "./cad";
 
-export type CameraView = 'overview' | 'top' | 'focus';
+export type CameraView = "overview" | "top" | "focus";
 interface Props {
   simulation: ActualSimulation;
   selected: EquipmentId;
@@ -45,13 +45,13 @@ interface Props {
   view: CameraView;
 }
 function routeColor(id: string) {
-  return id === 'air3A' || id === 'discharge3A'
-    ? MATERIALS['3A'].color
-    : id.includes('Mixed')
+  return id === "air3A" || id === "discharge3A"
+    ? MATERIALS["3A"].color
+    : id.includes("Mixed")
       ? MATERIALS.MIXED.color
-      : id.includes('Misc') || id.includes('manual')
-        ? '#e9bf75'
-        : '#5adcb0';
+      : id.includes("Misc") || id.includes("manual")
+        ? "#e9bf75"
+        : "#5adcb0";
 }
 const FLOW_SPEED = 2.4;
 function FlowPaths() {
@@ -64,7 +64,14 @@ function FlowPaths() {
       Object.entries(ROUTES).map(([id, route]) => {
         const length = route.points.slice(1).reduce((sum, point, index) => {
           const prev = route.points[index];
-          return sum + Math.hypot(point[0] - prev[0], point[1] - prev[1], point[2] - prev[2]);
+          return (
+            sum +
+            Math.hypot(
+              point[0] - prev[0],
+              point[1] - prev[1],
+              point[2] - prev[2],
+            )
+          );
         }, 0);
         return {
           id,
@@ -76,9 +83,15 @@ function FlowPaths() {
       }),
     [],
   );
-  const total = useMemo(() => routes.reduce((sum, entry) => sum + entry.count, 0), [routes]);
+  const total = useMemo(
+    () => routes.reduce((sum, entry) => sum + entry.count, 0),
+    [routes],
+  );
   const colors = useMemo(
-    () => routes.flatMap(({ color, count }) => Array.from({ length: count }, () => color)),
+    () =>
+      routes.flatMap(({ color, count }) =>
+        Array.from({ length: count }, () => color),
+      ),
     [routes],
   );
   useFrame(({ clock }) => {
@@ -96,10 +109,14 @@ function FlowPaths() {
           after[1] - before[1],
           after[2] - before[2],
         );
-        if (direction.current.lengthSq() < 0.00001) direction.current.set(1, 0, 0);
+        if (direction.current.lengthSq() < 0.00001)
+          direction.current.set(1, 0, 0);
         direction.current.normalize();
         dummy.current.position.set(...p);
-        dummy.current.quaternion.setFromUnitVectors(up.current, direction.current);
+        dummy.current.quaternion.setFromUnitVectors(
+          up.current,
+          direction.current,
+        );
         dummy.current.updateMatrix();
         arrows.current.setMatrixAt(index, dummy.current.matrix);
         index += 1;
@@ -125,7 +142,9 @@ function FlowPaths() {
         ref={(node) => {
           arrows.current = node;
           if (!node) return;
-          colors.forEach((color, index) => node.setColorAt(index, new THREE.Color(color)));
+          colors.forEach((color, index) =>
+            node.setColorAt(index, new THREE.Color(color)),
+          );
           if (node.instanceColor) node.instanceColor.needsUpdate = true;
         }}
         args={[undefined, undefined, total]}
@@ -146,8 +165,17 @@ function FlowPaths() {
   );
 }
 
-const REPLACED_ID = 'E25';
-const UNMOVED_IDS = new Set<string>(['E01', 'E19', 'E20', 'E21', 'E22', 'E23', 'E24']);
+const REPLACED_ID = "E25";
+const SHELL_Y_OFFSET = -0.06;
+const UNMOVED_IDS = new Set<string>([
+  "E01",
+  "E19",
+  "E20",
+  "E21",
+  "E22",
+  "E23",
+  "E24",
+]);
 const LINE_CENTER = EQUIPMENT_IDS.reduce(
   (bounds, id) => {
     const b = cad[id].bounds;
@@ -164,7 +192,7 @@ const MODEL_OFFSET: Point = [
   0,
   cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
 ];
-const PARTITION_IDS = ['E19', 'E20', 'E21', 'E22', 'E23', 'E24'];
+const PARTITION_IDS = ["E19", "E20", "E21", "E22", "E23", "E24"];
 const STORAGE_START_Z = cad.E01.bounds[5] - 0.5;
 const STORAGE_BAY_WIDTH = 4;
 const STORAGE_MIN_X = cad.E19.bounds[0];
@@ -182,23 +210,23 @@ const PARTITION_OFFSET_Z = Object.fromEntries(
   }),
 ) as Record<string, number>;
 const STORAGE_ZONES: { grade: Grade; label: string; bay: number }[] = [
-  { grade: 'MIXED', label: '染色PET', bay: 1 },
-  { grade: 'SMALL_WHITE', label: '小白', bay: 2 },
-  { grade: 'BIG_WHITE', label: '大白', bay: 3 },
-  { grade: 'FLOWER', label: '花乙', bay: 4 },
-  { grade: 'OIL', label: '油壶', bay: 5 },
-  { grade: 'CAN', label: '易拉罐', bay: 6 },
-  { grade: '3A', label: '3A', bay: 0 },
+  { grade: "MIXED", label: "染色PET", bay: 1 },
+  { grade: "SMALL_WHITE", label: "小白", bay: 2 },
+  { grade: "BIG_WHITE", label: "大白", bay: 3 },
+  { grade: "FLOWER", label: "花乙", bay: 4 },
+  { grade: "OIL", label: "油壶", bay: 5 },
+  { grade: "CAN", label: "易拉罐", bay: 6 },
+  { grade: "3A", label: "3A", bay: 0 },
 ];
 const STORAGE_LABEL_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  color: '#ffd34d',
-  textShadow: '0 1px 3px rgba(0, 0, 0, 0.85)',
+  display: "flex",
+  alignItems: "center",
+  color: "#ffd34d",
+  textShadow: "0 1px 3px rgba(0, 0, 0, 0.85)",
   font: '600 18px/1.2 "Microsoft YaHei", "PingFang SC", sans-serif',
-  pointerEvents: 'none',
-  userSelect: 'none',
-  whiteSpace: 'nowrap',
+  pointerEvents: "none",
+  userSelect: "none",
+  whiteSpace: "nowrap",
 };
 function StorageZones() {
   return (
@@ -227,7 +255,7 @@ function StorageZones() {
             />
             <Html
               position={[STORAGE_X, STORAGE_LABEL_Y, (front + back) / 2]}
-              rotation={[-Math.PI / 2, 0, 0]}
+              rotation={[-Math.PI / 2, 0, Math.PI / 2]}
               transform
             >
               <span style={STORAGE_LABEL_STYLE}>{zone.label}</span>
@@ -245,15 +273,15 @@ function CoordinateFrame() {
     cz = b[5] - 8,
     half = 8;
   const label: CSSProperties = {
-    padding: '1px 6px',
+    padding: "1px 6px",
     borderRadius: 4,
-    background: 'rgba(9, 26, 34, 0.82)',
-    border: '1px solid rgba(255, 255, 255, 0.18)',
-    color: '#eaf4f7',
-    font: '600 11px/1.5 ui-monospace, Consolas, monospace',
-    pointerEvents: 'none',
-    userSelect: 'none',
-    whiteSpace: 'nowrap',
+    background: "rgba(9, 26, 34, 0.82)",
+    border: "1px solid rgba(255, 255, 255, 0.18)",
+    color: "#eaf4f7",
+    font: "600 11px/1.5 ui-monospace, Consolas, monospace",
+    pointerEvents: "none",
+    userSelect: "none",
+    whiteSpace: "nowrap",
   };
   return (
     <group>
@@ -292,30 +320,42 @@ function CoordinateFrame() {
       />
       <mesh position={[cx + half, y, cz]} rotation={[0, 0, -Math.PI / 2]}>
         <coneGeometry args={[0.3, 0.9, 12]} />
-        <meshBasicMaterial color="#ff6b6b" toneMapped={false} depthTest={false} />
+        <meshBasicMaterial
+          color="#ff6b6b"
+          toneMapped={false}
+          depthTest={false}
+        />
       </mesh>
       <mesh position={[cx, y, cz + half]} rotation={[Math.PI / 2, 0, 0]}>
         <coneGeometry args={[0.3, 0.9, 12]} />
-        <meshBasicMaterial color="#5aa9ff" toneMapped={false} depthTest={false} />
+        <meshBasicMaterial
+          color="#5aa9ff"
+          toneMapped={false}
+          depthTest={false}
+        />
       </mesh>
       <mesh position={[cx, y + 2.6, cz]}>
         <coneGeometry args={[0.22, 0.6, 12]} />
-        <meshBasicMaterial color="#6ee7a8" toneMapped={false} depthTest={false} />
+        <meshBasicMaterial
+          color="#6ee7a8"
+          toneMapped={false}
+          depthTest={false}
+        />
       </mesh>
       <Html position={[cx + half + 0.7, y + 0.6, cz]} center>
-        <span style={{ ...label, color: '#ff9a9a' }}>+X</span>
+        <span style={{ ...label, color: "#ff9a9a" }}>+X</span>
       </Html>
       <Html position={[cx - half - 0.7, y + 0.6, cz]} center>
-        <span style={{ ...label, color: '#ff9a9a' }}>-X</span>
+        <span style={{ ...label, color: "#ff9a9a" }}>-X</span>
       </Html>
       <Html position={[cx, y + 0.6, cz + half + 0.7]} center>
-        <span style={{ ...label, color: '#9bc8ff' }}>+Z</span>
+        <span style={{ ...label, color: "#9bc8ff" }}>+Z</span>
       </Html>
       <Html position={[cx, y + 0.6, cz - half - 0.7]} center>
-        <span style={{ ...label, color: '#9bc8ff' }}>-Z</span>
+        <span style={{ ...label, color: "#9bc8ff" }}>-Z</span>
       </Html>
       <Html position={[cx, y + 3.2, cz]} center>
-        <span style={{ ...label, color: '#8ef0bb' }}>+Y</span>
+        <span style={{ ...label, color: "#8ef0bb" }}>+Y</span>
       </Html>
       <Html position={[cx, y + 0.6, cz]} center>
         <span style={label}>O</span>
@@ -363,19 +403,30 @@ function mergeZoneSegments(segments: ZoneSegment[]): ZoneSegment[] {
   return merged;
 }
 function unionZoneOutline(rects: ZoneRect[]): Point[][] {
-  const xs = [...new Set(rects.flatMap((rect) => [rect.minX, rect.maxX]))].sort((a, b) => a - b);
-  const zs = [...new Set(rects.flatMap((rect) => [rect.minZ, rect.maxZ]))].sort((a, b) => a - b);
+  const xs = [...new Set(rects.flatMap((rect) => [rect.minX, rect.maxX]))].sort(
+    (a, b) => a - b,
+  );
+  const zs = [...new Set(rects.flatMap((rect) => [rect.minZ, rect.maxZ]))].sort(
+    (a, b) => a - b,
+  );
   const columns = xs.length - 1,
     rows = zs.length - 1;
   const covered = Array.from({ length: columns }, (_, column) =>
     Array.from({ length: rows }, (_, row) => {
       const x = (xs[column] + xs[column + 1]) / 2,
         z = (zs[row] + zs[row + 1]) / 2;
-      return rects.some((rect) => x > rect.minX && x < rect.maxX && z > rect.minZ && z < rect.maxZ);
+      return rects.some(
+        (rect) =>
+          x > rect.minX && x < rect.maxX && z > rect.minZ && z < rect.maxZ,
+      );
     }),
   );
   const isCovered = (column: number, row: number) =>
-    column >= 0 && row >= 0 && column < columns && row < rows && covered[column][row];
+    column >= 0 &&
+    row >= 0 &&
+    column < columns &&
+    row < rows &&
+    covered[column][row];
   const vertical: ZoneSegment[] = [],
     horizontal: ZoneSegment[] = [];
   for (let column = 0; column <= columns; column += 1)
@@ -385,20 +436,20 @@ function unionZoneOutline(rects: ZoneRect[]): Point[][] {
   for (let row = 0; row <= rows; row += 1)
     for (let column = 0; column < columns; column += 1)
       if (isCovered(column, row - 1) !== isCovered(column, row))
-        horizontal.push({ fixed: zs[row], start: xs[column], end: xs[column + 1] });
+        horizontal.push({
+          fixed: zs[row],
+          start: xs[column],
+          end: xs[column + 1],
+        });
   return [
-    ...mergeZoneSegments(vertical).map(
-      (segment): Point[] => [
-        [segment.fixed, ZONE_Y, segment.start],
-        [segment.fixed, ZONE_Y, segment.end],
-      ],
-    ),
-    ...mergeZoneSegments(horizontal).map(
-      (segment): Point[] => [
-        [segment.start, ZONE_Y, segment.fixed],
-        [segment.end, ZONE_Y, segment.fixed],
-      ],
-    ),
+    ...mergeZoneSegments(vertical).map((segment): Point[] => [
+      [segment.fixed, ZONE_Y, segment.start],
+      [segment.fixed, ZONE_Y, segment.end],
+    ]),
+    ...mergeZoneSegments(horizontal).map((segment): Point[] => [
+      [segment.start, ZONE_Y, segment.fixed],
+      [segment.end, ZONE_Y, segment.fixed],
+    ]),
   ];
 }
 function EquipmentZones() {
@@ -461,7 +512,11 @@ function WeighingStation() {
     >
       <mesh position={[0, 0.09, 0]}>
         <boxGeometry args={[1.18, 0.18, 1.18]} />
-        <meshStandardMaterial color="#2f3a40" metalness={0.5} roughness={0.45} />
+        <meshStandardMaterial
+          color="#2f3a40"
+          metalness={0.5}
+          roughness={0.45}
+        />
       </mesh>
       {[
         [-0.46, -0.46],
@@ -471,25 +526,45 @@ function WeighingStation() {
       ].map(([x, z]) => (
         <mesh key={`${x}-${z}`} position={[x, 0.025, z]}>
           <cylinderGeometry args={[0.07, 0.09, 0.05, 12]} />
-          <meshStandardMaterial color="#182126" metalness={0.6} roughness={0.35} />
+          <meshStandardMaterial
+            color="#182126"
+            metalness={0.6}
+            roughness={0.35}
+          />
         </mesh>
       ))}
       <mesh position={[0, 0.24, 0]}>
         <boxGeometry args={[1.02, 0.08, 1.02]} />
-        <meshStandardMaterial color="#8c9aa1" metalness={0.6} roughness={0.32} />
+        <meshStandardMaterial
+          color="#8c9aa1"
+          metalness={0.6}
+          roughness={0.32}
+        />
       </mesh>
       <mesh position={[0, 0.29, 0]}>
         <boxGeometry args={[0.86, 0.02, 0.86]} />
-        <meshStandardMaterial color="#c9a227" metalness={0.35} roughness={0.55} />
+        <meshStandardMaterial
+          color="#c9a227"
+          metalness={0.35}
+          roughness={0.55}
+        />
       </mesh>
       <mesh position={[-0.47, 0.58, -0.39]}>
         <cylinderGeometry args={[0.035, 0.045, 0.75, 8]} />
-        <meshStandardMaterial color="#39464d" metalness={0.55} roughness={0.4} />
+        <meshStandardMaterial
+          color="#39464d"
+          metalness={0.55}
+          roughness={0.4}
+        />
       </mesh>
       <group position={[-0.47, 1.02, -0.39]} rotation={[0, -0.35, 0]}>
         <mesh>
           <boxGeometry args={[0.36, 0.24, 0.11]} />
-          <meshStandardMaterial color="#1a252a" metalness={0.3} roughness={0.5} />
+          <meshStandardMaterial
+            color="#1a252a"
+            metalness={0.3}
+            roughness={0.5}
+          />
         </mesh>
         <mesh position={[0, 0.02, 0.058]}>
           <planeGeometry args={[0.27, 0.14]} />
@@ -503,7 +578,11 @@ function WeighingStation() {
       </group>
       <mesh position={[0.08, 0.29, 0.06]}>
         <latheGeometry args={[BAG_PROFILE, 24]} />
-        <meshStandardMaterial color="#c7b08a" roughness={0.98} metalness={0.01} />
+        <meshStandardMaterial
+          color="#c7b08a"
+          roughness={0.98}
+          metalness={0.01}
+        />
       </mesh>
       <mesh position={[0.08, 0.965, 0.06]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.118, 0.014, 6, 14]} />
@@ -564,7 +643,11 @@ function EntranceFlowArrow() {
   return (
     <group position={[start, 1.17, z]}>
       <group ref={group}>
-        <mesh geometry={ARROW_SHAPE} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+        <mesh
+          geometry={ARROW_SHAPE}
+          rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
+        >
           <meshBasicMaterial
             ref={material}
             color="#f7c948"
@@ -580,6 +663,175 @@ function EntranceFlowArrow() {
   );
 }
 
+const MANUAL_ROUTE_Y = 1.19;
+const MANUAL_LANE_Y = 1.175;
+const MANUAL_LANE_HALF_WIDTH = 0.95;
+const MANUAL_LANE_LABEL = "人工转运通道";
+const MANUAL_LANE_LABEL_STYLE: CSSProperties = {
+  color: "#ffd34d",
+  textShadow: "0 1px 3px rgba(0, 0, 0, 0.85)",
+  font: '600 18px/1.2 "Microsoft YaHei", "PingFang SC", sans-serif',
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  userSelect: "none",
+};
+const MANUAL_ROUTE_LENGTH = MANUAL_PATH.slice(1).reduce((sum, point, index) => {
+  const prev = MANUAL_PATH[index];
+  return sum + Math.hypot(point[0] - prev[0], point[2] - prev[2]);
+}, 0);
+const MANUAL_ARROW_COUNT = Math.max(3, Math.round(MANUAL_ROUTE_LENGTH / 4.5));
+const MANUAL_ARROW_GEOMETRY = ARROW_SHAPE.clone().rotateX(-Math.PI / 2);
+const MANUAL_ARROW_TRANSFORMS = Array.from(
+  { length: MANUAL_ARROW_COUNT },
+  (_, index) => {
+    const progress = (index + 0.5) / MANUAL_ARROW_COUNT;
+    const point = along(MANUAL_PATH, progress);
+    const ahead = along(MANUAL_PATH, Math.min(1, progress + 0.01));
+    return {
+      position: [point[0], MANUAL_ROUTE_Y, point[2]] as Point,
+      yaw: Math.atan2(ahead[2] - point[2], -(ahead[0] - point[0])),
+    };
+  },
+);
+function offsetManualPath(offset: number): Point[] {
+  return MANUAL_PATH.map((point, index) => {
+    const prev = MANUAL_PATH[Math.max(0, index - 1)];
+    const next = MANUAL_PATH[Math.min(MANUAL_PATH.length - 1, index + 1)];
+    const inX = point[0] - prev[0];
+    const inZ = point[2] - prev[2];
+    const outX = next[0] - point[0];
+    const outZ = next[2] - point[2];
+    const inLength = Math.hypot(inX, inZ);
+    const outLength = Math.hypot(outX, outZ);
+    const inNormalX = inLength ? -inZ / inLength : 0;
+    const inNormalZ = inLength ? inX / inLength : 0;
+    const outNormalX = outLength ? -outZ / outLength : 0;
+    const outNormalZ = outLength ? outX / outLength : 0;
+    let miterX = inNormalX + outNormalX;
+    let miterZ = inNormalZ + outNormalZ;
+    const miterLength = Math.hypot(miterX, miterZ) || 1;
+    miterX /= miterLength;
+    miterZ /= miterLength;
+    const dot =
+      miterX * inNormalX + miterZ * inNormalZ ||
+      miterX * outNormalX + miterZ * outNormalZ;
+    const scale = offset / Math.max(0.2, Math.abs(dot));
+    return [
+      point[0] + miterX * scale,
+      MANUAL_LANE_Y,
+      point[2] + miterZ * scale,
+    ] as Point;
+  });
+}
+const MANUAL_LANE_SIDES = [
+  offsetManualPath(MANUAL_LANE_HALF_WIDTH),
+  offsetManualPath(-MANUAL_LANE_HALF_WIDTH),
+];
+const MANUAL_LANE_GEOMETRY = (() => {
+  const [left, right] = MANUAL_LANE_SIDES;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  left.forEach((point, index) => {
+    positions.push(point[0], MANUAL_LANE_Y, point[2]);
+    positions.push(right[index][0], MANUAL_LANE_Y, right[index][2]);
+    if (index < left.length - 1) {
+      const base = index * 2;
+      indices.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+    }
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  return geometry;
+})();
+const MANUAL_LANE_LABEL_POSITION: Point = [
+  (MANUAL_PATH[1][0] + MANUAL_PATH[2][0]) / 2,
+  MANUAL_ROUTE_Y,
+  (MANUAL_PATH[1][2] + MANUAL_PATH[2][2]) / 2,
+];
+function ManualTransferRoute({
+  simulation,
+  paths,
+}: Pick<Props, "simulation" | "paths">) {
+  const arrows = useRef<THREE.InstancedMesh>(null);
+  const lane = useRef<THREE.Group>(null);
+  const label = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!arrows.current) return;
+    const dummy = new THREE.Object3D();
+    MANUAL_ARROW_TRANSFORMS.forEach(({ position, yaw }, index) => {
+      dummy.position.set(...position);
+      dummy.rotation.set(0, yaw, 0);
+      dummy.scale.setScalar(0.55);
+      dummy.updateMatrix();
+      arrows.current!.setMatrixAt(index, dummy.matrix);
+    });
+    arrows.current.instanceMatrix.needsUpdate = true;
+  }, []);
+  useFrame(() => {
+    const active = simulation.current.job?.phase === "MANUAL_TRANSFER";
+    const visible = paths || active;
+    if (lane.current) lane.current.visible = visible;
+    if (label.current) label.current.style.display = visible ? "" : "none";
+  });
+  return (
+    <group ref={lane} visible={false}>
+      <mesh geometry={MANUAL_LANE_GEOMETRY} renderOrder={1}>
+        <meshBasicMaterial
+          color="#e9bf75"
+          transparent
+          opacity={0.16}
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {MANUAL_LANE_SIDES.map((points, index) => (
+        <Line
+          key={index}
+          points={points}
+          color="#e9bf75"
+          lineWidth={2}
+          dashed
+          dashSize={0.5}
+          gapSize={0.35}
+          transparent
+          opacity={0.85}
+          depthWrite={false}
+        />
+      ))}
+      <Html
+        position={MANUAL_LANE_LABEL_POSITION}
+        rotation={[-Math.PI / 2, 0, Math.PI / 2]}
+        transform
+      >
+        <span ref={label} style={MANUAL_LANE_LABEL_STYLE}>
+          {MANUAL_LANE_LABEL}
+        </span>
+      </Html>
+      <instancedMesh
+        ref={arrows}
+        args={[undefined, undefined, MANUAL_ARROW_COUNT]}
+        geometry={MANUAL_ARROW_GEOMETRY}
+        frustumCulled={false}
+        renderOrder={2}
+      >
+        <meshBasicMaterial
+          color="#e9bf75"
+          transparent
+          opacity={0.9}
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </instancedMesh>
+    </group>
+  );
+}
+
 function Plant({
   selected,
   onSelect,
@@ -587,7 +839,7 @@ function Plant({
   paths,
   shell,
   onLoad,
-}: Pick<Props, 'selected' | 'onSelect' | 'xray' | 'paths' | 'shell'> & {
+}: Pick<Props, "selected" | "onSelect" | "xray" | "paths" | "shell"> & {
   onLoad: (text: string) => void;
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
@@ -597,7 +849,7 @@ function Plant({
     let loaded: THREE.Group | null = null;
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     loader.load(
-      new URL('./actual-assets/plant-review.glb', document.baseURI).href,
+      new URL("./actual-assets/plant-review.glb", document.baseURI).href,
       (gltf) => {
         loaded = gltf.scene;
         if (cancelled) return;
@@ -605,7 +857,7 @@ function Plant({
         try {
           batched = batchPlant(gltf.scene);
         } catch {
-          onLoad('CAD 解析失败，请检查本地模型；仿真与面板仍可操作。');
+          onLoad("CAD 解析失败，请检查本地模型；仿真与面板仍可操作。");
           return;
         }
         loaded = batched;
@@ -616,24 +868,31 @@ function Plant({
           const materials = new Map<string, THREE.MeshStandardMaterial>();
           object.traverse((child) => {
             if (!(child instanceof THREE.Mesh)) return;
-            const originals = Array.isArray(child.material) ? child.material : [child.material];
+            const originals = Array.isArray(child.material)
+              ? child.material
+              : [child.material];
             const copies = originals.map((original) => {
-              if (!materials.has(original.uuid)) materials.set(original.uuid, original.clone());
+              if (!materials.has(original.uuid))
+                materials.set(original.uuid, original.clone());
               return materials.get(original.uuid)!;
             });
             child.material = Array.isArray(child.material) ? copies : copies[0];
           });
         });
         setModel(batched);
-        onLoad('已加载真实 CAD · 17 个设备已对应');
+        onLoad("已加载真实 CAD · 17 个设备已对应");
       },
       (progress) => {
         if (!cancelled && progress.total)
-          onLoad(`正在加载真实 CAD ${Math.round((progress.loaded / progress.total) * 100)}%`);
+          onLoad(
+            `正在加载真实 CAD ${Math.round((progress.loaded / progress.total) * 100)}%`,
+          );
       },
       () => {
         if (!cancelled)
-          onLoad('CAD 加载失败，请检查 actual-assets/plant-review.glb；仿真与数据面板仍可使用。');
+          onLoad(
+            "CAD 加载失败，请检查 actual-assets/plant-review.glb；仿真与数据面板仍可使用。",
+          );
       },
     );
     return () => {
@@ -642,9 +901,10 @@ function Plant({
         loaded.traverse((object) => {
           if (object instanceof THREE.Mesh) {
             object.geometry.dispose();
-            (Array.isArray(object.material) ? object.material : [object.material]).forEach((material) =>
-              material.dispose(),
-            );
+            (Array.isArray(object.material)
+              ? object.material
+              : [object.material]
+            ).forEach((material) => material.dispose());
           }
         });
     };
@@ -652,22 +912,37 @@ function Plant({
   useEffect(() => {
     if (!model) return;
     for (const [id, root] of roots.current) {
-      root.visible = id === 'E01' ? shell : id !== REPLACED_ID;
-      if (PARTITION_IDS.includes(id)) root.position.set(0, 0, PARTITION_OFFSET_Z[id]);
+      root.visible = id === "E01" ? shell : id !== REPLACED_ID;
+      if (PARTITION_IDS.includes(id))
+        root.position.set(0, 0, PARTITION_OFFSET_Z[id]);
       else {
-        const offset = UNMOVED_IDS.has(id) ? ([0, 0, 0] as Point) : MODEL_OFFSET;
-        root.position.set(offset[0], offset[1], offset[2]);
+        const offset = UNMOVED_IDS.has(id)
+          ? ([0, 0, 0] as Point)
+          : MODEL_OFFSET;
+        root.position.set(
+          offset[0],
+          offset[1] + (id === "E01" ? SHELL_Y_OFFSET : 0),
+          offset[2],
+        );
       }
-      const stock = ['E02', 'E03', 'E04', 'E05'].includes(id);
-      const faded = (xray || paths) && id !== 'E01';
+      const stock = ["E02", "E03", "E04", "E05"].includes(id);
+      const faded = (xray || paths) && id !== "E01";
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
-        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (id === "E01") {
+          object.geometry.computeBoundingBox();
+          const box = object.geometry.boundingBox;
+          if (box)
+            object.visible = box.max.y - box.min.y > 0.05 || box.max.y > 2;
+        }
+        for (const material of Array.isArray(object.material)
+          ? object.material
+          : [object.material]) {
           material.transparent = faded;
           material.opacity = faded ? (stock ? 0.16 : paths ? 0.3 : 0.78) : 1;
           material.depthWrite = !material.transparent;
           if (material instanceof THREE.MeshStandardMaterial) {
-            material.emissive.set(id === selected ? '#1a6354' : '#000000');
+            material.emissive.set(id === selected ? "#1a6354" : "#000000");
             material.emissiveIntensity = 0.32;
             material.roughness = Math.max(0.45, material.roughness);
           }
@@ -679,7 +954,10 @@ function Plant({
   return (
     <primitive
       object={model}
-      onClick={(event: { object: THREE.Object3D; stopPropagation: () => void }) => {
+      onClick={(event: {
+        object: THREE.Object3D;
+        stopPropagation: () => void;
+      }) => {
         let object: THREE.Object3D | null = event.object;
         while (object && !(object.name in EQUIPMENT)) object = object.parent;
         if (object) {
@@ -691,7 +969,7 @@ function Plant({
   );
 }
 
-function Bottles({ simulation }: Pick<Props, 'simulation'>) {
+function Bottles({ simulation }: Pick<Props, "simulation">) {
   const body = useRef<THREE.InstancedMesh>(null),
     neck = useRef<THREE.InstancedMesh>(null);
   const dummy = useRef(new THREE.Object3D()),
@@ -702,23 +980,31 @@ function Bottles({ simulation }: Pick<Props, 'simulation'>) {
     if (!body.current || !neck.current) return;
     let index = 0;
     for (const unit of simulation.current.units) {
-      if (unit.stage !== 'moving' || index >= 2048) continue;
+      if (unit.stage !== "moving" || index >= 2048) continue;
       const route = ROUTES[unit.route],
         p = along(route.points, unit.progress);
       const before = along(route.points, Math.max(0, unit.progress - 0.01));
       const after = along(route.points, Math.min(1, unit.progress + 0.01));
-      direction.current.set(after[0] - before[0], after[1] - before[1], after[2] - before[2]);
-      if (direction.current.lengthSq() < 0.00001) direction.current.set(1, 0, 0);
+      direction.current.set(
+        after[0] - before[0],
+        after[1] - before[1],
+        after[2] - before[2],
+      );
+      if (direction.current.lengthSq() < 0.00001)
+        direction.current.set(1, 0, 0);
       direction.current.normalize();
-      const spread = ((unit.id % 3) - 1) * (route.mode === 'air' ? 0.04 : 0.15);
+      const spread = ((unit.id % 3) - 1) * (route.mode === "air" ? 0.04 : 0.15);
       p[0] += direction.current.z * spread;
       p[2] -= direction.current.x * spread;
-      if (route.mode === 'screw') {
+      if (route.mode === "screw") {
         p[0] += Math.cos(unit.progress * 28) * 0.08;
         p[1] += Math.sin(unit.progress * 28) * 0.08;
       }
       dummy.current.position.set(...p);
-      dummy.current.quaternion.setFromUnitVectors(up.current, direction.current);
+      dummy.current.quaternion.setFromUnitVectors(
+        up.current,
+        direction.current,
+      );
       dummy.current.updateMatrix();
       body.current.setMatrixAt(index, dummy.current.matrix);
       dummy.current.position.addScaledVector(direction.current, 0.161);
@@ -737,11 +1023,26 @@ function Bottles({ simulation }: Pick<Props, 'simulation'>) {
   });
   return (
     <>
-      <instancedMesh ref={body} args={[undefined, undefined, 2048]} frustumCulled={false} renderOrder={4}>
+      <instancedMesh
+        ref={body}
+        args={[undefined, undefined, 2048]}
+        frustumCulled={false}
+        renderOrder={4}
+      >
         <capsuleGeometry args={[0.0805, 0.168, 3, 8]} />
-        <meshStandardMaterial roughness={0.25} metalness={0.06} emissive="#ffffff" emissiveIntensity={0.15} />
+        <meshStandardMaterial
+          roughness={0.25}
+          metalness={0.06}
+          emissive="#ffffff"
+          emissiveIntensity={0.15}
+        />
       </instancedMesh>
-      <instancedMesh ref={neck} args={[undefined, undefined, 2048]} frustumCulled={false} renderOrder={4}>
+      <instancedMesh
+        ref={neck}
+        args={[undefined, undefined, 2048]}
+        frustumCulled={false}
+        renderOrder={4}
+      >
         <cylinderGeometry args={[0.0315, 0.049, 0.084, 6]} />
         <meshStandardMaterial roughness={0.3} />
       </instancedMesh>
@@ -749,8 +1050,11 @@ function Bottles({ simulation }: Pick<Props, 'simulation'>) {
   );
 }
 
-const SILOS = ['E02', 'E03', 'E04', 'E05'] as const;
-function SiloContents({ simulation, onSelect }: Pick<Props, 'simulation' | 'onSelect'>) {
+const SILOS = ["E02", "E03", "E04", "E05"] as const;
+function SiloContents({
+  simulation,
+  onSelect,
+}: Pick<Props, "simulation" | "onSelect">) {
   const fills = useRef(new Map<string, THREE.Mesh>()),
     gates = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
@@ -774,13 +1078,13 @@ function SiloContents({ simulation, onSelect }: Pick<Props, 'simulation' | 'onSe
       {SILOS.map((id) => {
         const p = center(id),
           color =
-            id === 'E04'
-              ? MATERIALS['3A'].color
-              : id === 'E05'
+            id === "E04"
+              ? MATERIALS["3A"].color
+              : id === "E05"
                 ? MATERIALS.MIXED.color
-                : id === 'E03'
-                  ? '#e7bd73'
-                  : '#6cdcb2';
+                : id === "E03"
+                  ? "#e7bd73"
+                  : "#6cdcb2";
         return (
           <group key={id}>
             <mesh
@@ -794,9 +1098,14 @@ function SiloContents({ simulation, onSelect }: Pick<Props, 'simulation' | 'onSe
               }}
             >
               <boxGeometry args={[3.35, 1, 3.35]} />
-              <meshStandardMaterial color={color} transparent opacity={0.8} roughness={0.9} />
+              <meshStandardMaterial
+                color={color}
+                transparent
+                opacity={0.8}
+                roughness={0.9}
+              />
             </mesh>
-            {(id === 'E04' || id === 'E05') && (
+            {(id === "E04" || id === "E05") && (
               <mesh
                 ref={(node) => {
                   if (node) gates.current.set(id, node);
@@ -805,7 +1114,11 @@ function SiloContents({ simulation, onSelect }: Pick<Props, 'simulation' | 'onSe
                 renderOrder={3}
               >
                 <boxGeometry args={[1, 0.08, 0.8]} />
-                <meshStandardMaterial color={color} metalness={0.5} roughness={0.4} />
+                <meshStandardMaterial
+                  color={color}
+                  metalness={0.5}
+                  roughness={0.4}
+                />
               </mesh>
             )}
           </group>
@@ -815,7 +1128,7 @@ function SiloContents({ simulation, onSelect }: Pick<Props, 'simulation' | 'onSe
   );
 }
 
-function DeltaRobot({ simulation }: Pick<Props, 'simulation'>) {
+function DeltaRobot({ simulation }: Pick<Props, "simulation">) {
   const bars = useRef<(THREE.Mesh | null)[]>([]),
     gripper = useRef<THREE.Mesh>(null);
   const start = useRef(new THREE.Vector3()),
@@ -824,7 +1137,9 @@ function DeltaRobot({ simulation }: Pick<Props, 'simulation'>) {
   const up = useRef(new THREE.Vector3(0, 1, 0));
   useFrame(() => {
     const unit = simulation.current.units.find(
-      (unit) => unit.stage === 'moving' && (unit.route === 'robotGreen' || unit.route === 'robotBrown'),
+      (unit) =>
+        unit.stage === "moving" &&
+        (unit.route === "robotGreen" || unit.route === "robotBrown"),
     );
     const returning = simulation.current.armReturn;
     const drop = returning ? smallPosition(returning.grade) : null;
@@ -845,11 +1160,18 @@ function DeltaRobot({ simulation }: Pick<Props, 'simulation'>) {
     bars.current.forEach((bar, index) => {
       if (!bar) return;
       const angle = (index * Math.PI * 2) / 3;
-      start.current.set(-4.475 + Math.cos(angle) * 0.7, 3.45, 5.329 + Math.sin(angle) * 0.7);
+      start.current.set(
+        -4.475 + Math.cos(angle) * 0.7,
+        3.45,
+        5.329 + Math.sin(angle) * 0.7,
+      );
       direction.current.copy(end.current).sub(start.current);
       bar.position.copy(start.current).add(end.current).multiplyScalar(0.5);
       bar.scale.y = direction.current.length();
-      bar.quaternion.setFromUnitVectors(up.current, direction.current.normalize());
+      bar.quaternion.setFromUnitVectors(
+        up.current,
+        direction.current.normalize(),
+      );
     });
   });
   return (
@@ -863,7 +1185,11 @@ function DeltaRobot({ simulation }: Pick<Props, 'simulation'>) {
           renderOrder={3}
         >
           <cylinderGeometry args={[0.035, 0.035, 1, 6]} />
-          <meshStandardMaterial color="#62d9b2" metalness={0.55} roughness={0.3} />
+          <meshStandardMaterial
+            color="#62d9b2"
+            metalness={0.55}
+            roughness={0.3}
+          />
         </mesh>
       ))}
       <mesh ref={gripper} renderOrder={4}>
@@ -874,10 +1200,18 @@ function DeltaRobot({ simulation }: Pick<Props, 'simulation'>) {
   );
 }
 
-function Worker({ position, simulation }: { position: Point; simulation: ActualSimulation }) {
+function Worker({
+  position,
+  simulation,
+}: {
+  position: Point;
+  simulation: ActualSimulation;
+}) {
   const arm = useRef<THREE.Group>(null);
   useFrame(() => {
-    if (arm.current) arm.current.rotation.z = Math.sin(simulation.current.motion.E14 * 3) * 0.5;
+    if (arm.current)
+      arm.current.rotation.z =
+        Math.sin(simulation.current.motion.E14 * 3) * 0.5;
   });
   return (
     <group position={position}>
@@ -906,34 +1240,39 @@ function Worker({ position, simulation }: { position: Point; simulation: ActualS
 }
 
 const FUNNEL_LABEL_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   gap: 5,
-  padding: '1px 5px',
+  padding: "1px 5px",
   borderRadius: 3,
-  background: 'rgba(9, 26, 34, 0.8)',
-  border: '1px solid rgba(255, 255, 255, 0.9)',
-  color: '#eaf4f7',
+  background: "rgba(9, 26, 34, 0.8)",
+  border: "1px solid rgba(255, 255, 255, 0.9)",
+  color: "#eaf4f7",
   font: '600 10px/1.4 "Microsoft YaHei", "PingFang SC", sans-serif',
-  pointerEvents: 'none',
-  userSelect: 'none',
-  whiteSpace: 'nowrap',
+  pointerEvents: "none",
+  userSelect: "none",
+  whiteSpace: "nowrap",
 };
-const MANUAL_GRADES = SMALL_GRADES.filter((grade) => grade !== 'GREEN' && grade !== 'BROWN');
-function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
+const MANUAL_GRADES = SMALL_GRADES.filter(
+  (grade) => grade !== "GREEN" && grade !== "BROWN",
+);
+function SmallStocks({ simulation }: Pick<Props, "simulation">) {
   const fills = useRef(new Map<string, THREE.Mesh>());
   useFrame(() => {
     for (const grade of SMALL_GRADES) {
       const mesh = fills.current.get(grade);
       if (mesh)
-        mesh.scale.y = Math.max(0.03, (simulation.current.stocks[grade].length / 24) * 0.5);
+        mesh.scale.y = Math.max(
+          0.03,
+          (simulation.current.stocks[grade].length / 24) * 0.5,
+        );
     }
   });
   return (
     <>
       {SMALL_GRADES.map((grade) => {
         const p = smallPosition(grade),
-          manual = grade !== 'GREEN' && grade !== 'BROWN';
+          manual = grade !== "GREEN" && grade !== "BROWN";
         return (
           <group key={grade} position={p} scale={manual ? 1.2 : 1}>
             <mesh position={[0, 0.28, 0]}>
@@ -961,7 +1300,7 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
                 style={{
                   width: 5,
                   height: 5,
-                  borderRadius: '50%',
+                  borderRadius: "50%",
                   background: MATERIALS[grade].color,
                   flexShrink: 0,
                 }}
@@ -978,7 +1317,7 @@ function SmallStocks({ simulation }: Pick<Props, 'simulation'>) {
   );
 }
 
-function Packing({ simulation }: Pick<Props, 'simulation'>) {
+function Packing({ simulation }: Pick<Props, "simulation">) {
   const platen = useRef<THREE.Mesh>(null),
     bales = useRef<THREE.InstancedMesh>(null),
     cart = useRef<THREE.Group>(null);
@@ -988,13 +1327,16 @@ function Packing({ simulation }: Pick<Props, 'simulation'>) {
     const state = simulation.current,
       job = state.job;
     if (platen.current) {
-      platen.current.visible = job?.phase === 'COMPRESSING';
+      platen.current.visible = job?.phase === "COMPRESSING";
       platen.current.position.x =
-        0.8 - (job?.phase === 'COMPRESSING' ? Math.sin((job.elapsed / 6) * Math.PI) * 1.4 : 0);
+        0.8 -
+        (job?.phase === "COMPRESSING"
+          ? Math.sin((job.elapsed / 6) * Math.PI) * 1.4
+          : 0);
     }
     if (cart.current) {
-      cart.current.visible = job?.phase === 'MANUAL_TRANSFER';
-      if (job?.phase === 'MANUAL_TRANSFER')
+      cart.current.visible = job?.phase === "MANUAL_TRANSFER";
+      if (job?.phase === "MANUAL_TRANSFER")
         cart.current.position.set(...along(MANUAL_PATH, job.elapsed / 14));
     }
     if (!bales.current) return;
@@ -1013,7 +1355,8 @@ function Packing({ simulation }: Pick<Props, 'simulation'>) {
     });
     bales.current.count = visible.length;
     bales.current.instanceMatrix.needsUpdate = true;
-    if (bales.current.instanceColor) bales.current.instanceColor.needsUpdate = true;
+    if (bales.current.instanceColor)
+      bales.current.instanceColor.needsUpdate = true;
   });
   return (
     <>
@@ -1021,7 +1364,12 @@ function Packing({ simulation }: Pick<Props, 'simulation'>) {
         <boxGeometry args={[0.2, 1.2, 1.2]} />
         <meshStandardMaterial color="#5bdec0" metalness={0.5} />
       </mesh>
-      <instancedMesh ref={bales} args={[undefined, undefined, 24]} frustumCulled={false} visible={false}>
+      <instancedMesh
+        ref={bales}
+        args={[undefined, undefined, 24]}
+        frustumCulled={false}
+        visible={false}
+      >
         <boxGeometry args={[0.9, 0.65, 0.85]} />
         <meshStandardMaterial roughness={0.85} />
       </instancedMesh>
@@ -1040,7 +1388,7 @@ function Packing({ simulation }: Pick<Props, 'simulation'>) {
   );
 }
 
-function EquipmentMotion({ simulation }: Pick<Props, 'simulation'>) {
+function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
   const slats = useRef<THREE.InstancedMesh>(null),
     rotor = useRef<THREE.Group>(null),
     screw = useRef<THREE.Group>(null);
@@ -1051,7 +1399,13 @@ function EquipmentMotion({ simulation }: Pick<Props, 'simulation'>) {
     if (screw.current) screw.current.rotation.z = state.motion.E11 * 7;
     if (!slats.current) return;
     let index = 0;
-    for (const id of ['feed', 'manualIncline', 'incline2', 'chain', 'robotBelt'] as const) {
+    for (const id of [
+      "feed",
+      "manualIncline",
+      "incline2",
+      "chain",
+      "robotBelt",
+    ] as const) {
       const route = ROUTES[id],
         clock = state.motion[route.device];
       for (let slot = 0; slot < 12; slot += 1) {
@@ -1069,7 +1423,12 @@ function EquipmentMotion({ simulation }: Pick<Props, 'simulation'>) {
   });
   return (
     <>
-      <instancedMesh ref={slats} args={[undefined, undefined, 60]} frustumCulled={false} renderOrder={2}>
+      <instancedMesh
+        ref={slats}
+        args={[undefined, undefined, 60]}
+        frustumCulled={false}
+        renderOrder={2}
+      >
         <boxGeometry args={[0.58, 0.035, 0.08]} />
         <meshStandardMaterial color="#4b9f8a" transparent opacity={0.65} />
       </instancedMesh>
@@ -1101,29 +1460,40 @@ function EquipmentMotion({ simulation }: Pick<Props, 'simulation'>) {
   );
 }
 
-function CameraRig({ selected, view }: Pick<Props, 'selected' | 'view'>) {
+function CameraRig({ selected, view }: Pick<Props, "selected" | "view">) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null),
     clock = useRef(3);
   const desired = useRef(new THREE.Vector3()),
     target = useRef(new THREE.Vector3());
   const { camera, size } = useThree();
   useEffect(() => {
-    const fit = Math.max(1, Math.min(1.5, size.height / Math.max(1, size.width)));
+    const fit = Math.max(
+      1,
+      Math.min(1.5, size.height / Math.max(1, size.width)),
+    );
     target.current.set(-2.5 + MODEL_OFFSET[0], 2.5, -0.4 + MODEL_OFFSET[2]);
-    if (view === 'focus') {
+    if (view === "focus") {
       const point = center(selected);
-      target.current.set(point[0] + MODEL_OFFSET[0], point[1], point[2] + MODEL_OFFSET[2]);
+      target.current.set(
+        point[0] + MODEL_OFFSET[0],
+        point[1],
+        point[2] + MODEL_OFFSET[2],
+      );
       const b = cad[selected].bounds,
         span = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]);
       desired.current
         .copy(target.current)
-        .add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(Math.max(9, span * 2.8) * fit));
+        .add(
+          new THREE.Vector3(1, 0.8, 1)
+            .normalize()
+            .multiplyScalar(Math.max(9, span * 2.8) * fit),
+        );
     } else
       desired.current
         .copy(target.current)
         .add(
-          view === 'top'
-            ? new THREE.Vector3(0, 48 * fit, 0.01)
+          view === "top"
+            ? new THREE.Vector3(0.01, 48 * fit, 0)
             : new THREE.Vector3(29 * fit, 29 * fit, 35 * fit),
         );
     clock.current = 0;
@@ -1151,7 +1521,10 @@ function CameraRig({ selected, view }: Pick<Props, 'selected' | 'view'>) {
   );
 }
 
-class SceneBoundary extends Component<{ children: ReactNode; onError: () => void }, { failed: boolean }> {
+class SceneBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { failed: boolean }
+> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
@@ -1168,16 +1541,18 @@ function LabelProjector({
   simulation,
   selected,
   elements,
-}: Pick<Props, 'simulation' | 'selected'> & { elements: RefObject<Map<string, HTMLElement>> }) {
+}: Pick<Props, "simulation" | "selected"> & {
+  elements: RefObject<Map<string, HTMLElement>>;
+}) {
   const { camera, size } = useThree();
   const vector = useRef(new THREE.Vector3());
   useFrame(() => {
     const occupied: { x: number; y: number }[] = [];
     for (const [id, element] of elements.current) {
       let point: Point;
-      if (id === 'cart') {
+      if (id === "cart") {
         const job = simulation.current.job;
-        element.hidden = job?.phase !== 'MANUAL_TRANSFER';
+        element.hidden = job?.phase !== "MANUAL_TRANSFER";
         if (element.hidden || !job) continue;
         point = along(MANUAL_PATH, job.elapsed / 14);
         point[1] += 2;
@@ -1187,8 +1562,8 @@ function LabelProjector({
         element.hidden = false;
       } else {
         const grade = SMALL_GRADES.find((grade) => grade === id);
-        if (!grade || (grade !== 'GREEN' && grade !== 'BROWN')) continue;
-        element.hidden = selected !== 'E15';
+        if (!grade || (grade !== "GREEN" && grade !== "BROWN")) continue;
+        element.hidden = selected !== "E15";
         if (element.hidden) continue;
         point = smallPosition(grade);
         point[1] += 0.9;
@@ -1205,10 +1580,15 @@ function LabelProjector({
         element.hidden = true;
         continue;
       }
-      const x = Math.max(55, Math.min(size.width - 55, ((vector.current.x + 1) / 2) * size.width));
+      const x = Math.max(
+        55,
+        Math.min(size.width - 55, ((vector.current.x + 1) / 2) * size.width),
+      );
       let y = Math.max(70, ((1 - vector.current.y) / 2) * size.height);
       const direction = y < 120 ? 1 : -1;
-      while (occupied.some((p) => Math.abs(p.x - x) < 100 && Math.abs(p.y - y) < 25))
+      while (
+        occupied.some((p) => Math.abs(p.x - x) < 100 && Math.abs(p.y - y) < 25)
+      )
         y += direction * 27;
       y = Math.max(24, Math.min(size.height - 24, y));
       occupied.push({ x, y });
@@ -1220,25 +1600,45 @@ function LabelProjector({
 }
 
 export default function ActualScene(props: Props) {
-  const [loadState, setLoadState] = useState('正在加载真实 CAD…');
+  const [loadState, setLoadState] = useState("正在加载真实 CAD…");
   const elements = useRef(new Map<string, HTMLElement>());
   return (
     <div className="actual-scene">
       <Canvas
         camera={{ position: [26.5, 31.5, 33.6], fov: 38, near: 0.1, far: 300 }}
         dpr={[1, 1.5]}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
-        fallback={<p className="scene-error">浏览器不支持 WebGL；请使用设备列表和时间轴查看仿真。</p>}
+        gl={{ antialias: true, powerPreference: "high-performance" }}
+        fallback={
+          <p className="scene-error">
+            浏览器不支持 WebGL；请使用设备列表和时间轴查看仿真。
+          </p>
+        }
       >
-        <color attach="background" args={['#d3dce0']} />
-        <hemisphereLight args={['#ffffff', '#758995', 2.2]} />
-        <directionalLight position={[18, 30, 12]} intensity={2.7} color="#fff3df" />
-        <directionalLight position={[-20, 12, -20]} intensity={0.7} color="#c4e3ff" />
-        <SceneBoundary onError={() => setLoadState('三维画面暂不可用，仿真与面板仍可操作。')}>
+        <color attach="background" args={["#0b141a"]} />
+        <hemisphereLight args={["#ffffff", "#758995", 2.2]} />
+        <directionalLight
+          position={[18, 30, 12]}
+          intensity={2.7}
+          color="#fff3df"
+        />
+        <directionalLight
+          position={[-20, 12, -20]}
+          intensity={0.7}
+          color="#c4e3ff"
+        />
+        <SceneBoundary
+          onError={() => setLoadState("三维画面暂不可用，仿真与面板仍可操作。")}
+        >
           <Plant {...props} onLoad={setLoadState} />
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cad.E01.center[0], 1.16, cad.E01.center[2]]}>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[cad.E01.center[0], 1.16, cad.E01.center[2]]}
+          >
             <planeGeometry
-              args={[cad.E01.bounds[3] - cad.E01.bounds[0], cad.E01.bounds[5] - cad.E01.bounds[2]]}
+              args={[
+                cad.E01.bounds[3] - cad.E01.bounds[0],
+                cad.E01.bounds[5] - cad.E01.bounds[2],
+              ]}
             />
             <meshStandardMaterial color="#005c0c" roughness={1} metalness={0} />
           </mesh>
@@ -1247,6 +1647,10 @@ export default function ActualScene(props: Props) {
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
             {props.paths && <FlowPaths />}
+            <ManualTransferRoute
+              simulation={props.simulation}
+              paths={props.paths}
+            />
             <Bottles simulation={props.simulation} />
             <EntranceFlowArrow />
             <WeighingZone />
@@ -1258,7 +1662,11 @@ export default function ActualScene(props: Props) {
             <EquipmentMotion simulation={props.simulation} />
           </group>
           <CameraRig selected={props.selected} view={props.view} />
-          <LabelProjector simulation={props.simulation} selected={props.selected} elements={elements} />
+          <LabelProjector
+            simulation={props.simulation}
+            selected={props.selected}
+            elements={elements}
+          />
         </SceneBoundary>
       </Canvas>
       <div className="actual-projected-labels">
@@ -1275,16 +1683,23 @@ export default function ActualScene(props: Props) {
             <i
               style={{
                 background:
-                  id === 'E04'
-                    ? MATERIALS['3A'].color
-                    : id === 'E05'
+                  id === "E04"
+                    ? MATERIALS["3A"].color
+                    : id === "E05"
                       ? MATERIALS.MIXED.color
-                      : id === 'E03'
-                        ? '#e7bd73'
-                        : '#6cdcb2',
+                      : id === "E03"
+                        ? "#e7bd73"
+                        : "#6cdcb2",
               }}
             />
-            {id} · {id === 'E02' ? '三色中转' : id === 'E03' ? '杂瓶中转' : id === 'E04' ? '3A' : '杂色 PET'}
+            {id} ·{" "}
+            {id === "E02"
+              ? "三色中转"
+              : id === "E03"
+                ? "杂瓶中转"
+                : id === "E04"
+                  ? "3A"
+                  : "杂色 PET"}
           </button>
         ))}
         {SMALL_GRADES.map((grade) => (
@@ -1302,8 +1717,8 @@ export default function ActualScene(props: Props) {
         ))}
         <span
           ref={(node) => {
-            if (node) elements.current.set('cart', node);
-            else elements.current.delete('cart');
+            if (node) elements.current.set("cart", node);
+            else elements.current.delete("cart");
           }}
           className="stock-label"
           hidden
@@ -1315,7 +1730,6 @@ export default function ActualScene(props: Props) {
         <span />
         {loadState}
       </div>
-      <div className="scene-instruction">拖动旋转 · 滚轮缩放 · 点击设备聚焦</div>
     </div>
   );
 }

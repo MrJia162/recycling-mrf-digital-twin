@@ -143,8 +143,6 @@ h1 span {
   align-items: center;
   padding: 0 30px;
   gap: 42px;
-  background: #14232d;
-  border-bottom: 1px solid #2c3d47;
 }
 .actual-metrics > div {
   display: flex;
@@ -233,7 +231,7 @@ h1 span {
   position: absolute;
   bottom: 22px;
   left: 23px;
-  color: #3a5565;
+  color: #fff;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -252,7 +250,7 @@ h1 span {
   position: absolute;
   bottom: 22px;
   right: 22px;
-  color: #5a707d;
+  color: #fff;
   font-size: 10px;
   pointer-events: none;
 }
@@ -264,7 +262,7 @@ h1 span {
   flex-wrap: wrap;
   gap: 14px;
   font-size: 10px;
-  color: #425c6b;
+  color: #fff;
   pointer-events: none;
 }
 .material-legend span {

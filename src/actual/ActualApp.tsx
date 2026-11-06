@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Pause, Play, RotateCcw } from "lucide-react";
+import { Pause, Play, RotateCcw } from "lucide-react";
 import ActualScene, { type CameraView } from "./ActualScene";
 import { ActualSimulation, deviceStatus, openGate } from "./engine";
 import {
@@ -65,9 +65,9 @@ export default function ActualApp() {
     [selected, setSelected] = useState<EquipmentId>("E17");
   const [view, setView] = useState<CameraView>("overview");
   const [xray, setXray] = useState(true),
-    [paths, setPaths] = useState(true),
-    [shell, setShell] = useState(false),
-    [axes, setAxes] = useState(true);
+    [paths, setPaths] = useState(false),
+    [shell, setShell] = useState(true),
+    [axes, setAxes] = useState(false);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
     let handle = 0,
@@ -118,8 +118,7 @@ export default function ActualApp() {
   };
   const state = simulation.current,
     status = deviceStatus(state, selected);
-  const baled = state.bales.reduce((sum, bale) => sum + bale.count, 0),
-    inProcess = state.units.length - baled;
+  const baled = state.bales.reduce((sum, bale) => sum + bale.count, 0);
   const job = state.job;
   const gate = openGate(state) ? `${openGate(state)} 开启` : "两仓关闭";
   const play = () => {
@@ -144,37 +143,23 @@ export default function ActualApp() {
             </h1>
           </div>
         </div>
-        <div className="header-context">
-          <span className="live-dot" />
-          工艺模拟
-          <a href="./index.html" target="_blank" rel="noreferrer">
-            原演示 <ArrowUpRight size={14} />
-          </a>
-        </div>
+        <section className="actual-metrics" aria-label="产线模拟统计">
+          <div>
+            <span>累计上料</span>
+            <strong data-testid="received-count">
+              {state.units.length}
+              <small>批</small>
+            </strong>
+          </div>
+          <div>
+            <span>已打包</span>
+            <strong data-testid="baled-count">
+              {baled}
+              <small>批 / {state.bales.length} 包</small>
+            </strong>
+          </div>
+        </section>
       </header>
-
-      <section className="actual-metrics" aria-label="产线模拟统计">
-        <div>
-          <span>累计上料</span>
-          <strong data-testid="received-count">
-            {state.units.length}
-            <small>批</small>
-          </strong>
-        </div>
-        <div>
-          <span>已打包</span>
-          <strong data-testid="baled-count">
-            {baled}
-            <small>批 / {state.bales.length} 包</small>
-          </strong>
-        </div>
-        <p>
-          <i />
-          {job
-            ? `${MATERIALS[job.grade].name} · ${PHASE_NAMES[job.phase]}`
-            : "共用打包机等待供料"}
-        </p>
-      </section>
 
       <main className="actual-workspace">
         <section className="actual-stage" aria-label="实际产线三维动画">
@@ -207,12 +192,12 @@ export default function ActualApp() {
               ))}
             </div>
             <div>
-              <button
+              {/* <button
                 aria-pressed={xray}
                 onClick={() => setXray((value) => !value)}
               >
                 工艺透视
-              </button>
+              </button> */}
               <button
                 aria-pressed={paths}
                 onClick={() => setPaths((value) => !value)}
@@ -281,8 +266,8 @@ export default function ActualApp() {
               <span>{selected}</span>
               {EQUIPMENT[selected]}
             </h2>
-            <p className="cad-name">CAD 原名：{cad[selected].name}</p>
-            <label className="power-switch">
+            {/* <p className="cad-name">CAD 原名：{cad[selected].name}</p> */}
+            {/* <label className="power-switch">
               <span>模拟设备启用</span>
               <input
                 type="checkbox"
@@ -292,7 +277,7 @@ export default function ActualApp() {
                   refresh();
                 }}
               />
-            </label>
+            </label> */}
           </section>
 
           <section className="silo-panel" aria-label="四个料仓库存">
@@ -385,7 +370,7 @@ export default function ActualApp() {
             </div>
           </section>
 
-          <details className="small-stock-panel">
+          {/* <details className="small-stock-panel">
             <summary>
               独立小仓位{" "}
               <span>
@@ -406,7 +391,7 @@ export default function ActualApp() {
               ))}
             </div>
             <small>每 6 批申请人工转运，共用同一打包资源。</small>
-          </details>
+          </details> */}
 
           <details className="actual-parameters">
             <summary>
@@ -453,7 +438,7 @@ export default function ActualApp() {
                 </p>
               ))}
           </div>
-          <details className="actual-disclaimer">
+          {/* <details className="actual-disclaimer">
             <summary>模拟说明</summary>
             <p>
               设备几何与位置来自
@@ -463,7 +448,7 @@ export default function ActualApp() {
               到达 6
               分钟时暂停并保留在制物料，不执行班末强制清场。重播从起点开始，重置同时清除参数干预。
             </p>
-          </details>
+          </details> */}
         </aside>
       </main>
 

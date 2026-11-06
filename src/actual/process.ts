@@ -252,8 +252,8 @@ export const ROUTES = {
 export type RouteId = keyof typeof ROUTES;
 export const MANUAL_PATH: Point[] = [
   [0.5, 1.2, -2.7],
-  [6.5, 1.2, -2.7],
-  [6.5, 1.2, 12.8],
+  [8, 1.2, -2.7],
+  [8, 1.2, 12.8],
   [2.14, 1.2, 12.8],
 ];
 
