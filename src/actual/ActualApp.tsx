@@ -141,7 +141,7 @@ export default function ActualApp() {
           <div>
             <span className="eyebrow">RELOOP / TONGXIANG</span>
             <h1>
-              桐乡分拣线<span>实际设备运行动画</span>
+              桐乡分拣线<span>设备运行动画</span>
             </h1>
           </div>
         </div>
@@ -268,24 +268,11 @@ export default function ActualApp() {
               <span>{selected}</span>
               {EQUIPMENT[selected]}
             </h2>
-            {/* <p className="cad-name">CAD 原名：{cad[selected].name}</p> */}
-            {/* <label className="power-switch">
-              <span>模拟设备启用</span>
-              <input
-                type="checkbox"
-                checked={state.power[selected]}
-                onChange={(event) => {
-                  simulation.setPower(selected, event.target.checked);
-                  refresh();
-                }}
-              />
-            </label> */}
           </section>
 
           <section className="silo-panel" aria-label="四个料仓库存">
             <div className="section-heading">
               <span>料仓存量</span>
-              <small>模拟批次</small>
             </div>
             {(["E02", "E03", "E04", "E05"] as const).map((id) => {
               const count = state.stocks[id].length,
@@ -314,10 +301,7 @@ export default function ActualApp() {
                           ? "3A 成品"
                           : "杂色 PET 成品"}
                   </span>
-                  <strong>
-                    {count}
-                    <small> / {CAPACITY}</small>
-                  </strong>
+                  <strong>{count} %</strong>
                   <span className="stock-track">
                     <i
                       style={{
@@ -337,16 +321,22 @@ export default function ActualApp() {
               );
             })}
           </section>
-
+          <details className="small-stock-panel">
+            <summary>独立小仓位 </summary>
+            <div>
+              {SMALL_GRADES.map((grade) => (
+                <p key={grade}>
+                  <i style={{ background: MATERIALS[grade].color }} />
+                  {MATERIALS[grade].name}
+                  <strong>{state.stocks[grade].length}</strong>
+                </p>
+              ))}
+            </div>
+            <small>每 4 批申请人工转运，共用同一打包资源。</small>
+          </details>
           <section className="baler-panel" aria-label="共用打包资源">
             <div className="section-heading">
-              <span>共用打包机</span>
-              <small>E13</small>
-            </div>
-            <div className="packing-status">
-              <i className={job ? "on" : ""} />
-              <strong>{job ? PHASE_NAMES[job.phase] : "待料"}</strong>
-              <span>{job ? MATERIALS[job.grade].name : "—"}</span>
+              <span>打包机状态</span>
             </div>
             <p className="gate-status">
               仓门互锁 <span>{gate}</span>
@@ -371,29 +361,6 @@ export default function ActualApp() {
               ))}
             </div>
           </section>
-
-          {/* <details className="small-stock-panel">
-            <summary>
-              独立小仓位{" "}
-              <span>
-                {SMALL_GRADES.reduce(
-                  (sum, grade) => sum + state.stocks[grade].length,
-                  0,
-                )}{" "}
-                批
-              </span>
-            </summary>
-            <div>
-              {SMALL_GRADES.map((grade) => (
-                <p key={grade}>
-                  <i style={{ background: MATERIALS[grade].color }} />
-                  {MATERIALS[grade].name}
-                  <strong>{state.stocks[grade].length}</strong>
-                </p>
-              ))}
-            </div>
-            <small>每 4 批申请人工转运，共用同一打包资源。</small>
-          </details> */}
 
           <details className="actual-parameters">
             <summary>
@@ -440,17 +407,6 @@ export default function ActualApp() {
                 </p>
               ))}
           </div>
-          {/* <details className="actual-disclaimer">
-            <summary>模拟说明</summary>
-            <p>
-              设备几何与位置来自
-              STEP。带速、比例、仓容和节拍为演示参数；每个可视瓶代表模拟批次。小仓位、人工转运路线及内部运动为示意，待现场校准。
-            </p>
-            <p>
-              到达 6
-              分钟时暂停并保留在制物料，不执行班末强制清场。重播从起点开始，重置同时清除参数干预。
-            </p>
-          </details> */}
         </aside>
       </main>
 
