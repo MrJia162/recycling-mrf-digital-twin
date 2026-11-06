@@ -53,6 +53,98 @@ function routeColor(id: string) {
         ? '#e9bf75'
         : '#5adcb0';
 }
+const FLOW_SPEED = 2.4;
+function FlowPaths() {
+  const arrows = useRef<THREE.InstancedMesh>(null);
+  const dummy = useRef(new THREE.Object3D());
+  const up = useRef(new THREE.Vector3(0, 1, 0));
+  const direction = useRef(new THREE.Vector3());
+  const routes = useMemo(
+    () =>
+      Object.entries(ROUTES).map(([id, route]) => {
+        const length = route.points.slice(1).reduce((sum, point, index) => {
+          const prev = route.points[index];
+          return sum + Math.hypot(point[0] - prev[0], point[1] - prev[1], point[2] - prev[2]);
+        }, 0);
+        return {
+          id,
+          route,
+          color: routeColor(id),
+          length,
+          count: Math.max(2, Math.round(length / 3)),
+        };
+      }),
+    [],
+  );
+  const total = useMemo(() => routes.reduce((sum, entry) => sum + entry.count, 0), [routes]);
+  const colors = useMemo(
+    () => routes.flatMap(({ color, count }) => Array.from({ length: count }, () => color)),
+    [routes],
+  );
+  useFrame(({ clock }) => {
+    if (!arrows.current) return;
+    let index = 0;
+    for (const { route, length, count } of routes) {
+      const base = (clock.elapsedTime * FLOW_SPEED) / Math.max(0.001, length);
+      for (let slot = 0; slot < count; slot += 1) {
+        const progress = (base + slot / count) % 1;
+        const p = along(route.points, progress);
+        const before = along(route.points, Math.max(0, progress - 0.02));
+        const after = along(route.points, Math.min(1, progress + 0.02));
+        direction.current.set(
+          after[0] - before[0],
+          after[1] - before[1],
+          after[2] - before[2],
+        );
+        if (direction.current.lengthSq() < 0.00001) direction.current.set(1, 0, 0);
+        direction.current.normalize();
+        dummy.current.position.set(...p);
+        dummy.current.quaternion.setFromUnitVectors(up.current, direction.current);
+        dummy.current.updateMatrix();
+        arrows.current.setMatrixAt(index, dummy.current.matrix);
+        index += 1;
+      }
+    }
+    arrows.current.count = index;
+    arrows.current.instanceMatrix.needsUpdate = true;
+  });
+  return (
+    <>
+      {routes.map(({ id, route, color }) => (
+        <Line
+          key={id}
+          points={route.points}
+          color={color}
+          lineWidth={3}
+          transparent
+          opacity={0.5}
+          depthTest={false}
+        />
+      ))}
+      <instancedMesh
+        ref={(node) => {
+          arrows.current = node;
+          if (!node) return;
+          colors.forEach((color, index) => node.setColorAt(index, new THREE.Color(color)));
+          if (node.instanceColor) node.instanceColor.needsUpdate = true;
+        }}
+        args={[undefined, undefined, total]}
+        frustumCulled={false}
+        renderOrder={5}
+      >
+        <coneGeometry args={[0.1, 0.3, 10]} />
+        <meshBasicMaterial
+          color="#ffffff"
+          transparent
+          opacity={0.95}
+          depthTest={false}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </instancedMesh>
+    </>
+  );
+}
 
 const REPLACED_ID = 'E25';
 const UNMOVED_IDS = new Set<string>(['E01', 'E19', 'E20', 'E21', 'E22', 'E23', 'E24']);
@@ -492,9 +584,12 @@ function Plant({
   selected,
   onSelect,
   xray,
+  paths,
   shell,
   onLoad,
-}: Pick<Props, 'selected' | 'onSelect' | 'xray' | 'shell'> & { onLoad: (text: string) => void }) {
+}: Pick<Props, 'selected' | 'onSelect' | 'xray' | 'paths' | 'shell'> & {
+  onLoad: (text: string) => void;
+}) {
   const [model, setModel] = useState<THREE.Group | null>(null);
   const roots = useRef(new Map<string, THREE.Object3D>());
   useEffect(() => {
@@ -564,11 +659,12 @@ function Plant({
         root.position.set(offset[0], offset[1], offset[2]);
       }
       const stock = ['E02', 'E03', 'E04', 'E05'].includes(id);
+      const faded = (xray || paths) && id !== 'E01';
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-          material.transparent = xray && id !== 'E01';
-          material.opacity = xray && id !== 'E01' ? (stock ? 0.16 : 0.78) : 1;
+          material.transparent = faded;
+          material.opacity = faded ? (stock ? 0.16 : paths ? 0.3 : 0.78) : 1;
           material.depthWrite = !material.transparent;
           if (material instanceof THREE.MeshStandardMaterial) {
             material.emissive.set(id === selected ? '#1a6354' : '#000000');
@@ -578,7 +674,7 @@ function Plant({
         }
       });
     }
-  }, [model, xray, shell, selected]);
+  }, [model, xray, paths, shell, selected]);
   if (!model) return null;
   return (
     <primitive
@@ -1150,18 +1246,7 @@ export default function ActualScene(props: Props) {
           {props.axes && <CoordinateFrame />}
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
-            {props.paths &&
-              Object.entries(ROUTES).map(([id, route]) => (
-                <Line
-                  key={id}
-                  points={route.points}
-                  color={routeColor(id)}
-                  lineWidth={1.6}
-                  transparent
-                  opacity={0.35}
-                  depthTest={false}
-                />
-              ))}
+            {props.paths && <FlowPaths />}
             <Bottles simulation={props.simulation} />
             <EntranceFlowArrow />
             <WeighingZone />
