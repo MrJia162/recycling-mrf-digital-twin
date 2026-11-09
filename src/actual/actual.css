@@ -228,6 +228,36 @@ h1 span {
 .actual-view-tools button:hover {
   background: #36515d;
 }
+.camera-readout {
+  position: absolute;
+  top: 64px;
+  right: 20px;
+  z-index: 15;
+  display: grid;
+  gap: 2px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(9, 26, 34, 0.78);
+  color: #9fb4bf;
+  font:
+    500 10px/1.5 ui-monospace,
+    Consolas,
+    monospace;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.camera-readout b {
+  color: #eaf4f7;
+  font-weight: 600;
+}
+.camera-readout small {
+  color: #7e96a5;
+  font-size: 9px;
+}
+.camera-readout small b {
+  color: #b8cbd3;
+}
 .model-status {
   position: absolute;
   bottom: 22px;
@@ -426,6 +456,45 @@ h1 span {
   line-height: 1.6;
   overflow-wrap: anywhere;
   margin: 0;
+}
+.sorter-detail {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #2d3e49;
+}
+.sorter-detail p {
+  margin: 0 0 12px;
+  color: #9db4bf;
+  font-size: 10px;
+  line-height: 1.7;
+}
+.sorter-detail p span {
+  display: block;
+  margin-bottom: 2px;
+  color: #7e96a5;
+  font-size: 10px;
+}
+.sorter-detail dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.sorter-detail dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 7px;
+  border-top: 1px solid #263842;
+}
+.sorter-detail dt {
+  color: #829dab;
+  font-size: 10px;
+}
+.sorter-detail dd {
+  margin: 0;
+  color: #e5f1f4;
+  font-size: 11px;
+  font-weight: 500;
 }
 .power-switch {
   display: flex;
@@ -790,6 +859,10 @@ h1 span {
   .actual-view-tools button {
     padding: 6px 9px;
   }
+  .camera-readout {
+    top: 84px;
+    right: 12px;
+  }
   .actual-playback {
     gap: 22px;
     padding: 16px 20px;
@@ -935,6 +1008,11 @@ h1 span {
   }
   .actual-view-tools button {
     font-size: 10px;
+  }
+  .camera-readout {
+    top: 92px;
+    right: 16px;
+    font-size: 9px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -836,12 +836,16 @@ function ManualTransferRoute({
 const BALER_DOOR_TRAVEL = 1.63;
 function Plant({
   selected,
+  view,
   xray,
   paths,
   shell,
   simulation,
   onLoad,
-}: Pick<Props, "selected" | "xray" | "paths" | "shell" | "simulation"> & {
+}: Pick<
+  Props,
+  "selected" | "view" | "xray" | "paths" | "shell" | "simulation"
+> & {
   onLoad: (text: string) => void;
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
@@ -946,6 +950,7 @@ function Plant({
           offset[2],
         );
       }
+      const isSelected = view === "focus" && id === selected;
       const stock = ["E02", "E03", "E04", "E05"].includes(id);
       const faded = (xray || paths) && id !== "E01";
       root.traverse((object) => {
@@ -959,18 +964,27 @@ function Plant({
         for (const material of Array.isArray(object.material)
           ? object.material
           : [object.material]) {
-          material.transparent = faded;
-          material.opacity = faded ? (stock ? 0.16 : paths ? 0.3 : 0.78) : 1;
+          const opacity = isSelected
+            ? 0.35
+            : faded
+              ? stock
+                ? 0.16
+                : paths
+                  ? 0.3
+                  : 0.78
+              : 1;
+          material.transparent = opacity < 1;
+          material.opacity = opacity;
           material.depthWrite = !material.transparent;
           if (material instanceof THREE.MeshStandardMaterial) {
-            material.emissive.set(id === selected ? "#1a6354" : "#000000");
+            material.emissive.set(isSelected ? "#1a6354" : "#000000");
             material.emissiveIntensity = 0.32;
             material.roughness = Math.max(0.45, material.roughness);
           }
         }
       });
     }
-  }, [model, xray, paths, shell, selected]);
+  }, [model, xray, paths, shell, selected, view]);
   if (!model) return null;
   return <primitive object={model} />;
 }
@@ -1641,12 +1655,36 @@ function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
   );
 }
 
+const FOCUS_OVERRIDES: Partial<
+  Record<
+    EquipmentId,
+    { azimuth?: number; elevation?: number; distance?: number }
+  >
+> = {
+  E06: { distance: 9.8 },
+  E17: { distance: 8.4 },
+  E11: { azimuth: -84.1, elevation: 24.7, distance: 15.1 },
+  E07: { azimuth: 70.1, elevation: 44.2, distance: 16.4 },
+  E14: { azimuth: 90.4, elevation: 23.3, distance: 22.6 },
+  E12: { distance: 12.9 },
+  E09: { distance: 9.3 },
+  E18: { azimuth: -88.8, elevation: 23.8, distance: 9.8 },
+  E16: { azimuth: -178.0, elevation: 34.3, distance: 10.5 },
+  E15: { azimuth: 177, elevation: 31.7, distance: 10.1 },
+  E08: { azimuth: 50.8, elevation: 22.3, distance: 10.7 },
+  E10: { azimuth: 75.7, elevation: 31.4, distance: 20.9 },
+  E13: { azimuth: 137.9, elevation: 18.6, distance: 16.1 },
+};
 function CameraRig({
   selected,
   view,
-}: Pick<Props, "selected" | "view">) {
+  readout,
+}: Pick<Props, "selected" | "view"> & {
+  readout: RefObject<HTMLDivElement | null>;
+}) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null),
-    clock = useRef(3);
+    clock = useRef(3),
+    readoutClock = useRef(0);
   const desired = useRef(new THREE.Vector3()),
     target = useRef(new THREE.Vector3());
   const { camera, size } = useThree();
@@ -1666,13 +1704,32 @@ function CameraRig({
       );
       const b = cad[selected].bounds,
         span = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]);
+      let dx = target.current.x - (-2.5 + MODEL_OFFSET[0]);
+      let dz = target.current.z - (-0.4 + MODEL_OFFSET[2]);
+      const length = Math.hypot(dx, dz);
+      if (length < 1e-4) {
+        dx = 1;
+        dz = 1;
+      } else {
+        dx /= length;
+        dz /= length;
+      }
+      const override = FOCUS_OVERRIDES[selected];
+      const baseDistance = Math.max(14, span * 3.2) * fit;
+      let direction: THREE.Vector3;
+      let distance = override?.distance ?? baseDistance * Math.sqrt(1.36);
+      if (override?.azimuth !== undefined && override.elevation !== undefined) {
+        const azimuth = THREE.MathUtils.degToRad(override.azimuth);
+        const elevation = THREE.MathUtils.degToRad(override.elevation);
+        direction = new THREE.Vector3(
+          Math.sin(azimuth) * Math.cos(elevation),
+          Math.sin(elevation),
+          Math.cos(azimuth) * Math.cos(elevation),
+        );
+      } else direction = new THREE.Vector3(dx, 0.6, dz).normalize();
       desired.current
         .copy(target.current)
-        .add(
-          new THREE.Vector3(1, 0.8, 1)
-            .normalize()
-            .multiplyScalar(Math.max(9, span * 2.8) * fit),
-        );
+        .add(direction.multiplyScalar(distance));
     } else
       desired.current
         .copy(target.current)
@@ -1684,7 +1741,35 @@ function CameraRig({
     clock.current = 0;
   }, [focusKey, view, size.width, size.height]);
   useFrame((_, delta) => {
-    if (!controls.current || clock.current >= 2.8) return;
+    if (!controls.current) return;
+    readoutClock.current += delta;
+    if (readoutClock.current >= 0.1 && readout.current) {
+      readoutClock.current = 0;
+      const offset = camera.position.clone().sub(controls.current.target);
+      const distance = offset.length();
+      if (distance > 1e-6) {
+        const azimuth = THREE.MathUtils.radToDeg(
+          Math.atan2(offset.x, offset.z),
+        );
+        const elevation = THREE.MathUtils.radToDeg(
+          Math.asin(THREE.MathUtils.clamp(offset.y / distance, -1, 1)),
+        );
+        const set = (role: string, value: string) => {
+          const element = readout.current?.querySelector(
+            `[data-role="${role}"]`,
+          );
+          if (element) element.textContent = value;
+        };
+        set("azimuth", `${azimuth.toFixed(1)}°`);
+        set("elevation", `${elevation.toFixed(1)}°`);
+        set("distance", `${distance.toFixed(1)} m`);
+        set(
+          "target",
+          `${controls.current.target.x.toFixed(1)}, ${controls.current.target.y.toFixed(1)}, ${controls.current.target.z.toFixed(1)}`,
+        );
+      }
+    }
+    if (clock.current >= 2.8) return;
     clock.current += delta;
     const amount = 1 - Math.exp(-delta * 5);
     camera.position.lerp(desired.current, amount);
@@ -1832,6 +1917,7 @@ function DevicePins({ selected, onSelect }: Pick<Props, "selected" | "onSelect">
 export default function ActualScene(props: Props) {
   const [loadState, setLoadState] = useState("正在加载真实 CAD…");
   const elements = useRef(new Map<string, HTMLElement>());
+  const cameraReadout = useRef<HTMLDivElement>(null);
   return (
     <div className="actual-scene">
       <Canvas
@@ -1898,7 +1984,11 @@ export default function ActualScene(props: Props) {
               />
             )}
           </group>
-          <CameraRig selected={props.selected} view={props.view} />
+          <CameraRig
+            selected={props.selected}
+            view={props.view}
+            readout={cameraReadout}
+          />
           <LabelProjector
             selected={props.selected}
             view={props.view}
@@ -1951,6 +2041,20 @@ export default function ActualScene(props: Props) {
             {MATERIALS[grade].name}
           </span>
         ))}
+      </div>
+      <div className="camera-readout" ref={cameraReadout}>
+        <span>
+          方位角 <b data-role="azimuth">—</b>
+        </span>
+        <span>
+          仰角 <b data-role="elevation">—</b>
+        </span>
+        <span>
+          距离 <b data-role="distance">—</b>
+        </span>
+        <small>
+          目标 <b data-role="target">—</b>
+        </small>
       </div>
       <div className="model-status">
         <span />

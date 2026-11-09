@@ -41,6 +41,7 @@ export interface Job {
 export interface ActualState {
   step: number;
   time: number;
+  sorted: number;
   units: Unit[];
   bales: Bale[];
   stocks: Record<StockId, number[]>;
@@ -88,6 +89,7 @@ function empty(): ActualState {
   return {
     step: 0,
     time: 0,
+    sorted: 0,
     units: [],
     bales: [],
     stocks: Object.fromEntries(STOCK_IDS.map((id) => [id, [] as number[]])) as Record<StockId, number[]>,
@@ -144,6 +146,7 @@ function arrived(state: ActualState, unit: Unit) {
       next('sort1');
       break;
     case 'sort1':
+      state.sorted += 1;
       next(isPet(unit.grade) ? 'airPet' : 'airMisc');
       break;
     case 'airPet':

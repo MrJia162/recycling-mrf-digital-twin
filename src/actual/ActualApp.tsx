@@ -62,6 +62,7 @@ export default function ActualApp() {
   );
   const [speed, setSpeed] = useState(1),
     [selected, setSelected] = useState<EquipmentId>("E17");
+  const [showStandardSections, setShowStandardSections] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
   const [xray, setXray] = useState(true),
     [paths, setPaths] = useState(false),
@@ -112,6 +113,7 @@ export default function ActualApp() {
   }, []);
   const selectDevice = useCallback((id: EquipmentId) => {
     setSelected(id);
+    setShowStandardSections(id !== "E17");
   }, []);
   const seek = (time: number) => {
     simulation.seek(time);
@@ -268,145 +270,174 @@ export default function ActualApp() {
               <span>{selected}</span>
               {EQUIPMENT[selected]}
             </h2>
+            {selected === "E17" && (
+              <div className="sorter-detail">
+                <p>
+                  <span>简介</span>
+                  自研“AI
+                  分选机”，按识别结果将材质分出三色瓶（PET）与杂瓶，分别风送至
+                  E02、E03
+                  中转仓，搭载“自研训练大模型”，实现现场实际使用，反馈训练，迭代优化的正反馈使用场景。
+                </p>
+                <dl>
+                  <div>
+                    <dt>设备编号</dt>
+                    <dd>E17</dd>
+                  </div>
+                  <div>
+                    <dt>状态</dt>
+                    <dd>{status}</dd>
+                  </div>
+                  <div>
+                    <dt>分拣次数</dt>
+                    <dd>{state.sorted} 次</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
           </section>
 
-          <section className="silo-panel" aria-label="四个料仓库存">
-            <div className="section-heading">
-              <span>料仓存量</span>
-            </div>
-            {(["E02", "E03", "E04", "E05"] as const).map((id) => {
-              const count = state.stocks[id].length,
-                color =
-                  id === "E04"
-                    ? MATERIALS["3A"].color
-                    : id === "E05"
-                      ? MATERIALS.MIXED.color
-                      : id === "E03"
-                        ? "#e9bf75"
-                        : "#5bd7ac";
-              return (
-                <button
-                  className={`silo-row ${selected === id ? "selected" : ""}`}
-                  key={id}
-                  onClick={() => selectDevice(id)}
-                  aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
-                >
-                  <span>
-                    {id} ·{" "}
-                    {id === "E02"
-                      ? "三色中转"
-                      : id === "E03"
-                        ? "杂瓶中转"
-                        : id === "E04"
-                          ? "3A 成品"
-                          : "杂色 PET 成品"}
-                  </span>
-                  <strong>{count} %</strong>
-                  <span className="stock-track">
-                    <i
-                      style={{
-                        width: `${(count / CAPACITY) * 100}%`,
-                        background: color,
+          {showStandardSections && (
+            <>
+              <section className="silo-panel" aria-label="四个料仓库存">
+                <div className="section-heading">
+                  <span>料仓存量</span>
+                </div>
+                {(["E02", "E03", "E04", "E05"] as const).map((id) => {
+                  const count = state.stocks[id].length,
+                    color =
+                      id === "E04"
+                        ? MATERIALS["3A"].color
+                        : id === "E05"
+                          ? MATERIALS.MIXED.color
+                          : id === "E03"
+                            ? "#e9bf75"
+                            : "#5bd7ac";
+                  return (
+                    <button
+                      className={`silo-row ${selected === id ? "selected" : ""}`}
+                      key={id}
+                      onClick={() => selectDevice(id)}
+                      aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
+                    >
+                      <span>
+                        {id} ·{" "}
+                        {id === "E02"
+                          ? "三色中转"
+                          : id === "E03"
+                            ? "杂瓶中转"
+                            : id === "E04"
+                              ? "3A 成品"
+                              : "杂色 PET 成品"}
+                      </span>
+                      <strong>{count} %</strong>
+                      <span className="stock-track">
+                        <i
+                          style={{
+                            width: `${(count / CAPACITY) * 100}%`,
+                            background: color,
+                          }}
+                        />
+                        {(id === "E04" || id === "E05") && (
+                          <b
+                            style={{
+                              left: `${(state.settings.threshold / CAPACITY) * 100}%`,
+                            }}
+                          />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </section>
+              <details className="small-stock-panel">
+                <summary>独立小仓位 </summary>
+                <div>
+                  {SMALL_GRADES.map((grade) => (
+                    <p key={grade}>
+                      <i style={{ background: MATERIALS[grade].color }} />
+                      {MATERIALS[grade].name}
+                      <strong>{state.stocks[grade].length}</strong>
+                    </p>
+                  ))}
+                </div>
+                <small>每 4 批申请人工转运，共用同一打包资源。</small>
+              </details>
+              <section className="baler-panel" aria-label="共用打包资源">
+                <div className="section-heading">
+                  <span>打包机状态</span>
+                </div>
+                <p className="gate-status">
+                  仓门互锁 <span>{gate}</span>
+                </p>
+                <div className="packing-stages">
+                  {["供料", "压缩", "出包"].map((name, index) => (
+                    <span
+                      key={name}
+                      className={
+                        job &&
+                        (job.phase === "EJECTING"
+                          ? index === 2
+                          : job.phase === "COMPRESSING"
+                            ? index === 1
+                            : index === 0)
+                          ? "active"
+                          : ""
+                      }
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </section>
+
+              <details className="actual-parameters">
+                <summary>
+                  模拟参数 <span>可调整</span>
+                </summary>
+                {PARAMETERS.map((parameter) => (
+                  <label key={parameter.id}>
+                    <span>
+                      {parameter.label}
+                      <strong>
+                        {state.settings[parameter.id].toFixed(
+                          parameter.step < 1 ? 1 : 0,
+                        )}{" "}
+                        {parameter.unit}
+                      </strong>
+                    </span>
+                    <input
+                      type="range"
+                      aria-label={parameter.label}
+                      min={PARAMETER_LIMITS[parameter.id][0]}
+                      max={PARAMETER_LIMITS[parameter.id][1]}
+                      step={parameter.step}
+                      value={state.settings[parameter.id]}
+                      onChange={(event) => {
+                        simulation.setParameter(
+                          parameter.id,
+                          Number(event.target.value),
+                        );
+                        refresh();
                       }}
                     />
-                    {(id === "E04" || id === "E05") && (
-                      <b
-                        style={{
-                          left: `${(state.settings.threshold / CAPACITY) * 100}%`,
-                        }}
-                      />
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-          </section>
-          <details className="small-stock-panel">
-            <summary>独立小仓位 </summary>
-            <div>
-              {SMALL_GRADES.map((grade) => (
-                <p key={grade}>
-                  <i style={{ background: MATERIALS[grade].color }} />
-                  {MATERIALS[grade].name}
-                  <strong>{state.stocks[grade].length}</strong>
-                </p>
-              ))}
-            </div>
-            <small>每 4 批申请人工转运，共用同一打包资源。</small>
-          </details>
-          <section className="baler-panel" aria-label="共用打包资源">
-            <div className="section-heading">
-              <span>打包机状态</span>
-            </div>
-            <p className="gate-status">
-              仓门互锁 <span>{gate}</span>
-            </p>
-            <div className="packing-stages">
-              {["供料", "压缩", "出包"].map((name, index) => (
-                <span
-                  key={name}
-                  className={
-                    job &&
-                    (job.phase === "EJECTING"
-                      ? index === 2
-                      : job.phase === "COMPRESSING"
-                        ? index === 1
-                        : index === 0)
-                      ? "active"
-                      : ""
-                  }
-                >
-                  {name}
-                </span>
-              ))}
-            </div>
-          </section>
-
-          <details className="actual-parameters">
-            <summary>
-              模拟参数 <span>可调整</span>
-            </summary>
-            {PARAMETERS.map((parameter) => (
-              <label key={parameter.id}>
-                <span>
-                  {parameter.label}
-                  <strong>
-                    {state.settings[parameter.id].toFixed(
-                      parameter.step < 1 ? 1 : 0,
-                    )}{" "}
-                    {parameter.unit}
-                  </strong>
-                </span>
-                <input
-                  type="range"
-                  aria-label={parameter.label}
-                  min={PARAMETER_LIMITS[parameter.id][0]}
-                  max={PARAMETER_LIMITS[parameter.id][1]}
-                  step={parameter.step}
-                  value={state.settings[parameter.id]}
-                  onChange={(event) => {
-                    simulation.setParameter(
-                      parameter.id,
-                      Number(event.target.value),
-                    );
-                    refresh();
-                  }}
-                />
-              </label>
-            ))}
-            <small>调整按当前时刻记录，拖回历史可重放。</small>
-          </details>
-          <div className="actual-events" aria-label="最近生产事件">
-            {state.events
-              .slice(-3)
-              .reverse()
-              .map((event, index) => (
-                <p key={`${event.time}-${index}`}>
-                  <time>{formatTime(event.time)}</time>
-                  {event.text}
-                </p>
-              ))}
-          </div>
+                  </label>
+                ))}
+                <small>调整按当前时刻记录，拖回历史可重放。</small>
+              </details>
+              <div className="actual-events" aria-label="最近生产事件">
+                {state.events
+                  .slice(-3)
+                  .reverse()
+                  .map((event, index) => (
+                    <p key={`${event.time}-${index}`}>
+                      <time>{formatTime(event.time)}</time>
+                      {event.text}
+                    </p>
+                  ))}
+              </div>
+            </>
+          )}
         </aside>
       </main>
 
