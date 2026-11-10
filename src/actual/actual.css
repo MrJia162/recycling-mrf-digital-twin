@@ -323,7 +323,8 @@ input[type='range']::-moz-range-thumb {
   letter-spacing: 1px;
   white-space: nowrap;
 }
-.header-link:hover {
+.header-link:hover,
+.header-link[aria-expanded='true'] {
   color: var(--cyan-bright);
 }
 

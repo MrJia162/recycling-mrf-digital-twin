@@ -42,7 +42,6 @@ interface Props {
   xray: boolean;
   paths: boolean;
   shell: boolean;
-  axes: boolean;
   view: CameraView;
 }
 function routeColor(id: string) {
@@ -312,104 +311,6 @@ function StorageZones() {
     </>
   );
 }
-function CoordinateFrame() {
-  const b = cad.E01.bounds,
-    y = 1.22,
-    cx = (b[0] + b[3]) / 2,
-    cz = b[5] - 8,
-    half = 8;
-  const label: CSSProperties = {
-    padding: "1px 6px",
-    borderRadius: 4,
-    background: "rgba(9, 26, 34, 0.82)",
-    border: "1px solid rgba(255, 255, 255, 0.18)",
-    color: "#eaf4f7",
-    font: "600 11px/1.5 ui-monospace, Consolas, monospace",
-    pointerEvents: "none",
-    userSelect: "none",
-    whiteSpace: "nowrap",
-  };
-  return (
-    <group>
-      <Line
-        points={[
-          [cx - half, y, cz],
-          [cx + half, y, cz],
-        ]}
-        color="#ff6b6b"
-        lineWidth={3}
-        transparent
-        opacity={0.95}
-        depthTest={false}
-      />
-      <Line
-        points={[
-          [cx, y, cz - half],
-          [cx, y, cz + half],
-        ]}
-        color="#5aa9ff"
-        lineWidth={3}
-        transparent
-        opacity={0.95}
-        depthTest={false}
-      />
-      <Line
-        points={[
-          [cx, y, cz],
-          [cx, y + 2.6, cz],
-        ]}
-        color="#6ee7a8"
-        lineWidth={2}
-        transparent
-        opacity={0.95}
-        depthTest={false}
-      />
-      <mesh position={[cx + half, y, cz]} rotation={[0, 0, -Math.PI / 2]}>
-        <coneGeometry args={[0.3, 0.9, 12]} />
-        <meshBasicMaterial
-          color="#ff6b6b"
-          toneMapped={false}
-          depthTest={false}
-        />
-      </mesh>
-      <mesh position={[cx, y, cz + half]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.3, 0.9, 12]} />
-        <meshBasicMaterial
-          color="#5aa9ff"
-          toneMapped={false}
-          depthTest={false}
-        />
-      </mesh>
-      <mesh position={[cx, y + 2.6, cz]}>
-        <coneGeometry args={[0.22, 0.6, 12]} />
-        <meshBasicMaterial
-          color="#6ee7a8"
-          toneMapped={false}
-          depthTest={false}
-        />
-      </mesh>
-      <Html position={[cx + half + 0.7, y + 0.6, cz]} center>
-        <span style={{ ...label, color: "#ff9a9a" }}>+X</span>
-      </Html>
-      <Html position={[cx - half - 0.7, y + 0.6, cz]} center>
-        <span style={{ ...label, color: "#ff9a9a" }}>-X</span>
-      </Html>
-      <Html position={[cx, y + 0.6, cz + half + 0.7]} center>
-        <span style={{ ...label, color: "#9bc8ff" }}>+Z</span>
-      </Html>
-      <Html position={[cx, y + 0.6, cz - half - 0.7]} center>
-        <span style={{ ...label, color: "#9bc8ff" }}>-Z</span>
-      </Html>
-      <Html position={[cx, y + 3.2, cz]} center>
-        <span style={{ ...label, color: "#8ef0bb" }}>+Y</span>
-      </Html>
-      <Html position={[cx, y + 0.6, cz]} center>
-        <span style={label}>O</span>
-      </Html>
-    </group>
-  );
-}
-
 const ZONE_MARGIN = 0.22;
 const ZONE_Y = 1.19;
 const ZONE_EPSILON = 1e-6;
@@ -2046,7 +1947,6 @@ export default function ActualScene(props: Props) {
           />
           <StorageZones />
           <PostBalerStacking simulation={props.simulation} />
-          {props.axes && <CoordinateFrame />}
           <group position={MODEL_OFFSET}>
             <EquipmentZones />
             {props.paths && <FlowPaths />}

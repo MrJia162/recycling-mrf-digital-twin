@@ -116,12 +116,12 @@ export default function ActualApp() {
   const [speed, setSpeed] = useState(1),
     [selected, setSelected] = useState<EquipmentId | null>(null);
   const [showStandardSections, setShowStandardSections] = useState(false);
+  const [showPlayback, setShowPlayback] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
   const [zoomShot, setZoomShot] = useState<number | null>(null);
   const [xray, setXray] = useState(false),
     [paths, setPaths] = useState(false),
-    [shell, setShell] = useState(false),
-    [axes, setAxes] = useState(false);
+    [shell, setShell] = useState(false);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
@@ -245,7 +245,15 @@ export default function ActualApp() {
             系统在线
           </span>
           <span className="header-clock">{formatClock(clock)}</span>
-          <a className="header-link" href="./index.html">
+          <a
+            className="header-link"
+            href="./index.html"
+            aria-expanded={showPlayback}
+            onClick={(event) => {
+              event.preventDefault();
+              setShowPlayback((value) => !value);
+            }}
+          >
             原演示
           </a>
         </div>
@@ -322,7 +330,6 @@ export default function ActualApp() {
             xray={xray}
             paths={paths}
             shell={shell}
-            axes={axes}
             view={view}
           />
           <div className="actual-view-tools" aria-label="三维视图控制">
@@ -367,12 +374,6 @@ export default function ActualApp() {
                 onClick={() => setShell((value) => !value)}
               >
                 厂房
-              </button>
-              <button
-                aria-pressed={axes}
-                onClick={() => setAxes((value) => !value)}
-              >
-                坐标
               </button>
             </div>
           </div>
@@ -678,101 +679,103 @@ export default function ActualApp() {
         </aside>
       </main>
 
-      <footer className="actual-playback">
-        <div className="playback-controls">
-          <button
-            className="play-button"
-            onClick={play}
-            aria-label={
-              playing
-                ? "暂停"
-                : state.time >= PLAYBACK_HORIZON
-                  ? "重播"
-                  : "播放"
-            }
-          >
-            {playing ? (
-              <Pause size={18} />
-            ) : (
-              <Play size={18} fill="currentColor" />
-            )}
-          </button>
-          <button
-            className="reset-button"
-            aria-label="重置实际产线"
-            onClick={() => {
-              simulation.reset();
-              setPlaying(false);
-              refresh();
-            }}
-          >
-            <RotateCcw size={17} />
-          </button>
-          <select
-            aria-label="播放倍速"
-            value={speed}
-            onChange={(event) => setSpeed(Number(event.target.value))}
-          >
-            {[1, 2, 4, 8].map((value) => (
-              <option key={value} value={value}>
-                {value}×
-              </option>
-            ))}
-          </select>
-          <span className="playback-time">
-            {formatTime(state.time)}
-            <small> / {formatTime(PLAYBACK_HORIZON)}</small>
-          </span>
-        </div>
-        <div className="actual-timeline">
-          <label className="sr-only" htmlFor="actual-time">
-            实际产线时间轴
-          </label>
-          <input
-            id="actual-time"
-            type="range"
-            min={0}
-            max={PLAYBACK_HORIZON}
-            step={0.1}
-            value={state.time}
-            onChange={(event) => seek(Number(event.target.value))}
-          />
-          <div className="actual-milestones">
-            {STOPS.map((stop) => (
-              <button
-                key={stop.time}
-                onClick={() => seek(stop.time)}
-                style={{ left: `${(stop.time / PLAYBACK_HORIZON) * 100}%` }}
-              >
-                {stop.label}
-              </button>
-            ))}
+      {showPlayback && (
+        <footer className="actual-playback">
+          <div className="playback-controls">
+            <button
+              className="play-button"
+              onClick={play}
+              aria-label={
+                playing
+                  ? "暂停"
+                  : state.time >= PLAYBACK_HORIZON
+                    ? "重播"
+                    : "播放"
+              }
+            >
+              {playing ? (
+                <Pause size={18} />
+              ) : (
+                <Play size={18} fill="currentColor" />
+              )}
+            </button>
+            <button
+              className="reset-button"
+              aria-label="重置实际产线"
+              onClick={() => {
+                simulation.reset();
+                setPlaying(false);
+                refresh();
+              }}
+            >
+              <RotateCcw size={17} />
+            </button>
+            <select
+              aria-label="播放倍速"
+              value={speed}
+              onChange={(event) => setSpeed(Number(event.target.value))}
+            >
+              {[1, 2, 4, 8].map((value) => (
+                <option key={value} value={value}>
+                  {value}×
+                </option>
+              ))}
+            </select>
+            <span className="playback-time">
+              {formatTime(state.time)}
+              <small> / {formatTime(PLAYBACK_HORIZON)}</small>
+            </span>
           </div>
-        </div>
-        <section className="actual-metrics" aria-label="产线模拟统计">
-          <div>
-            <span>累计上料</span>
-            <strong data-testid="received-count">
-              {state.units.length}
-              <small>批</small>
-            </strong>
+          <div className="actual-timeline">
+            <label className="sr-only" htmlFor="actual-time">
+              实际产线时间轴
+            </label>
+            <input
+              id="actual-time"
+              type="range"
+              min={0}
+              max={PLAYBACK_HORIZON}
+              step={0.1}
+              value={state.time}
+              onChange={(event) => seek(Number(event.target.value))}
+            />
+            <div className="actual-milestones">
+              {STOPS.map((stop) => (
+                <button
+                  key={stop.time}
+                  onClick={() => seek(stop.time)}
+                  style={{ left: `${(stop.time / PLAYBACK_HORIZON) * 100}%` }}
+                >
+                  {stop.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div>
-            <span>已打包</span>
-            <strong data-testid="baled-count">
-              {baled}
-              <small>批 / {state.bales.length} 包</small>
-            </strong>
-          </div>
-          <div>
-            <span>在制物料</span>
-            <strong>
-              {working}
-              <small>批</small>
-            </strong>
-          </div>
-        </section>
-      </footer>
+          <section className="actual-metrics" aria-label="产线模拟统计">
+            <div>
+              <span>累计上料</span>
+              <strong data-testid="received-count">
+                {state.units.length}
+                <small>批</small>
+              </strong>
+            </div>
+            <div>
+              <span>已打包</span>
+              <strong data-testid="baled-count">
+                {baled}
+                <small>批 / {state.bales.length} 包</small>
+              </strong>
+            </div>
+            <div>
+              <span>在制物料</span>
+              <strong>
+                {working}
+                <small>批</small>
+              </strong>
+            </div>
+          </section>
+        </footer>
+      )}
       {zoomShot !== null && (
         <div
           className="sorter-lightbox"
