@@ -26,6 +26,7 @@ import { ActualSimulation, deviceStatus, openGate, statusTone } from "./engine";
 import {
   CAPACITY,
   EQUIPMENT,
+  EQUIPMENT_FLOW_IDS,
   EQUIPMENT_IDS,
   MATERIALS,
   PLAYBACK_HORIZON,
@@ -52,6 +53,15 @@ const STOPS = [
   { time: 35, label: "人工 / 脱标" },
   { time: 60, label: "二次分选" },
   { time: 100, label: "自动打包" },
+];
+const SILO_DEVICE_IDS = new Set<EquipmentId>(["E02", "E03", "E04", "E05"]);
+const SORTER_SHOTS = [
+  "001.png",
+  "002.png",
+  "003.png",
+  "004.png",
+  "005.png",
+  "006.png",
 ];
 const DEVICE_ICONS: Record<string, typeof Cpu> = {
   分选: Cpu,
@@ -107,6 +117,7 @@ export default function ActualApp() {
     [selected, setSelected] = useState<EquipmentId>("E17");
   const [showStandardSections, setShowStandardSections] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
+  const [zoomShot, setZoomShot] = useState<number | null>(null);
   const [xray, setXray] = useState(true),
     [paths, setPaths] = useState(false),
     [shell, setShell] = useState(true),
@@ -116,6 +127,14 @@ export default function ActualApp() {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (zoomShot === null) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [zoomShot]);
   useEffect(() => {
     let handle = 0,
       last = performance.now(),
@@ -146,6 +165,10 @@ export default function ActualApp() {
   }, [playing, speed, simulation, refresh]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (event.code === "Escape") {
+        setZoomShot(null);
+        return;
+      }
       if (
         (event.target as HTMLElement)?.closest?.("input,select,textarea,button")
       )
@@ -175,9 +198,7 @@ export default function ActualApp() {
   const job = state.job;
   const gate = openGate(state) ? `${openGate(state)} 开启` : "两仓关闭";
   const powered = EQUIPMENT_IDS.filter((id) => state.power[id]).length;
-  const tones = EQUIPMENT_IDS.map((id) =>
-    statusTone(deviceStatus(state, id)),
-  );
+  const tones = EQUIPMENT_IDS.map((id) => statusTone(deviceStatus(state, id)));
   const runCount = tones.filter((value) => value === "run").length;
   const warnCount = tones.filter((value) => value === "warn").length;
   const alarmCount = tones.filter((value) => value === "alarm").length;
@@ -212,9 +233,9 @@ export default function ActualApp() {
           <i className="title-wing" aria-hidden="true" />
           <div className="title-core">
             <h1>
-              桐乡分拣中心<span>数字孪生</span>
+              <span>桐乡分拣中心</span>
             </h1>
-            <small>INDOOR RECYCLING SORTING CENTER · DIGITAL TWIN</small>
+            <small>INDOOR RECYCLING SORTING CENTER</small>
           </div>
           <i className="title-wing reverse" aria-hidden="true" />
         </div>
@@ -238,7 +259,7 @@ export default function ActualApp() {
             <small>EQUIPMENT STATUS</small>
           </div>
           <div className="device-list">
-            {EQUIPMENT_IDS.map((id) => {
+            {EQUIPMENT_FLOW_IDS.map((id) => {
               const deviceState = deviceStatus(state, id);
               const deviceTone = statusTone(deviceState);
               return (
@@ -421,6 +442,33 @@ export default function ActualApp() {
                       <dd>99.2 %</dd>
                     </div>
                   </dl>
+                  {view === "focus" && (
+                    <div className="sorter-shots">
+                      <span>识别照片</span>
+                      <div>
+                        {SORTER_SHOTS.map((name, index) => (
+                          <button
+                            key={name}
+                            type="button"
+                            className="sorter-shot"
+                            aria-label={`放大识别照片 ${index + 1}`}
+                            onClick={() => setZoomShot(index)}
+                          >
+                            <img
+                              src={
+                                new URL(
+                                  `./actual-assets/images/${name}`,
+                                  document.baseURI,
+                                ).href
+                              }
+                              alt={`分选机识别照片 ${index + 1}`}
+                              loading="lazy"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -428,61 +476,66 @@ export default function ActualApp() {
 
           {showStandardSections && (
             <>
-              <section className="silo-panel panel-frame" aria-label="四个料仓库存">
-                <div className="panel-title">
-                  <span className="panel-title-mark">《</span>
-                  <h2>料仓存量</h2>
-                  <small>SILO STOCK</small>
-                </div>
-                <div className="panel-body">
-                  {(["E02", "E03", "E04", "E05"] as const).map((id) => {
-                    const count = state.stocks[id].length,
-                      color =
-                        id === "E04"
-                          ? MATERIALS["3A"].color
-                          : id === "E05"
-                            ? MATERIALS.MIXED.color
-                            : id === "E03"
-                              ? "#e9bf75"
-                              : "#5bd7ac";
-                    return (
-                      <button
-                        className={`silo-row ${selected === id ? "selected" : ""}`}
-                        key={id}
-                        onClick={() => selectDevice(id)}
-                        aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
-                      >
-                        <span>
-                          {id} ·{" "}
-                          {id === "E02"
-                            ? "三色中转"
-                            : id === "E03"
-                              ? "杂瓶中转"
-                              : id === "E04"
-                                ? "3A 成品"
-                                : "杂色 PET 成品"}
-                        </span>
-                        <strong>{count} %</strong>
-                        <span className="stock-track">
-                          <i
-                            style={{
-                              width: `${(count / CAPACITY) * 100}%`,
-                              background: color,
-                            }}
-                          />
-                          {(id === "E04" || id === "E05") && (
-                            <b
+              {SILO_DEVICE_IDS.has(selected) && (
+                <section
+                  className="silo-panel panel-frame"
+                  aria-label="四个料仓库存"
+                >
+                  <div className="panel-title">
+                    <span className="panel-title-mark">《</span>
+                    <h2>料仓存量</h2>
+                    <small>SILO STOCK</small>
+                  </div>
+                  <div className="panel-body">
+                    {(["E02", "E03", "E04", "E05"] as const).map((id) => {
+                      const count = state.stocks[id].length,
+                        color =
+                          id === "E04"
+                            ? MATERIALS["3A"].color
+                            : id === "E05"
+                              ? MATERIALS.MIXED.color
+                              : id === "E03"
+                                ? "#e9bf75"
+                                : "#5bd7ac";
+                      return (
+                        <button
+                          className={`silo-row ${selected === id ? "selected" : ""}`}
+                          key={id}
+                          onClick={() => selectDevice(id)}
+                          aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
+                        >
+                          <span>
+                            {id} ·{" "}
+                            {id === "E02"
+                              ? "三色中转"
+                              : id === "E03"
+                                ? "杂瓶中转"
+                                : id === "E04"
+                                  ? "3A 成品"
+                                  : "杂色 PET 成品"}
+                          </span>
+                          <strong>{count} %</strong>
+                          <span className="stock-track">
+                            <i
                               style={{
-                                left: `${(state.settings.threshold / CAPACITY) * 100}%`,
+                                width: `${(count / CAPACITY) * 100}%`,
+                                background: color,
                               }}
                             />
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
+                            {(id === "E04" || id === "E05") && (
+                              <b
+                                style={{
+                                  left: `${(state.settings.threshold / CAPACITY) * 100}%`,
+                                }}
+                              />
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
               <details className="small-stock-panel panel-frame">
                 <summary>
                   <span className="panel-title-mark">《</span>
@@ -499,37 +552,42 @@ export default function ActualApp() {
                 </div>
                 <small>每 4 批申请人工转运，共用同一打包资源。</small>
               </details>
-              <section className="baler-panel panel-frame" aria-label="共用打包资源">
-                <div className="panel-title">
-                  <span className="panel-title-mark">《</span>
-                  <h2>打包机状态</h2>
-                  <small>BALER</small>
-                </div>
-                <div className="panel-body">
-                  <p className="gate-status">
-                    仓门互锁 <span>{gate}</span>
-                  </p>
-                  <div className="packing-stages">
-                    {["供料", "压缩", "出包"].map((name, index) => (
-                      <span
-                        key={name}
-                        className={
-                          job &&
-                          (job.phase === "EJECTING"
-                            ? index === 2
-                            : job.phase === "COMPRESSING"
-                              ? index === 1
-                              : index === 0)
-                            ? "active"
-                            : ""
-                        }
-                      >
-                        {name}
-                      </span>
-                    ))}
+              {selected === "E13" && (
+                <section
+                  className="baler-panel panel-frame"
+                  aria-label="共用打包资源"
+                >
+                  <div className="panel-title">
+                    <span className="panel-title-mark">《</span>
+                    <h2>打包机状态</h2>
+                    <small>BALER</small>
                   </div>
-                </div>
-              </section>
+                  <div className="panel-body">
+                    <p className="gate-status">
+                      仓门互锁 <span>{gate}</span>
+                    </p>
+                    <div className="packing-stages">
+                      {["供料", "压缩", "出包"].map((name, index) => (
+                        <span
+                          key={name}
+                          className={
+                            job &&
+                            (job.phase === "EJECTING"
+                              ? index === 2
+                              : job.phase === "COMPRESSING"
+                                ? index === 1
+                                : index === 0)
+                              ? "active"
+                              : ""
+                          }
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <details className="actual-parameters panel-frame">
                 <summary>
@@ -695,6 +753,35 @@ export default function ActualApp() {
           </div>
         </section>
       </footer>
+      {zoomShot !== null && (
+        <div
+          className="sorter-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="识别照片预览"
+          onClick={() => setZoomShot(null)}
+        >
+          <button
+            type="button"
+            className="sorter-lightbox-close"
+            aria-label="关闭预览"
+            autoFocus
+            onClick={() => setZoomShot(null)}
+          >
+            ×
+          </button>
+          <img
+            src={
+              new URL(
+                `./actual-assets/images/${SORTER_SHOTS[zoomShot]}`,
+                document.baseURI,
+              ).href
+            }
+            alt={`分选机识别照片 ${zoomShot + 1}`}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

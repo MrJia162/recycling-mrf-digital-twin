@@ -14,12 +14,7 @@ import { Html, Line, OrbitControls } from "@react-three/drei";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import * as THREE from "three";
-import {
-  ActualSimulation,
-  deviceStatus,
-  openGate,
-  statusTone,
-} from "./engine";
+import { ActualSimulation, openGate } from "./engine";
 import {
   CAPACITY,
   EQUIPMENT,
@@ -227,6 +222,10 @@ const MODEL_OFFSET: Point = [
 ];
 const SHELL_SCALE = 1.5;
 const SHELL_FLOOR_Y = 1.2;
+const SHELL_EXTRA_HEIGHT = 2;
+const SHELL_BASE_HEIGHT = cad.E01.bounds[4] - SHELL_FLOOR_Y;
+const SHELL_SCALE_Y =
+  (SHELL_BASE_HEIGHT * SHELL_SCALE + SHELL_EXTRA_HEIGHT) / SHELL_BASE_HEIGHT;
 const SHELL_PIVOT: Point = [
   cad.E01.center[0],
   SHELL_FLOOR_Y,
@@ -234,7 +233,7 @@ const SHELL_PIVOT: Point = [
 ];
 const SHELL_POSITION: Point = [
   SHELL_PIVOT[0] * (1 - SHELL_SCALE),
-  SHELL_PIVOT[1] * (1 - SHELL_SCALE) + SHELL_Y_OFFSET,
+  SHELL_PIVOT[1] * (1 - SHELL_SCALE_Y) + SHELL_Y_OFFSET,
   SHELL_PIVOT[2] * (1 - SHELL_SCALE),
 ];
 const SHELL_WIDTH = (cad.E01.bounds[3] - cad.E01.bounds[0]) * SHELL_SCALE;
@@ -1002,7 +1001,7 @@ function Plant({
     for (const [id, root] of roots.current) {
       root.visible = id === "E01" ? shell : id !== REPLACED_ID;
       if (id === "E01") {
-        root.scale.setScalar(SHELL_SCALE);
+        root.scale.set(SHELL_SCALE, SHELL_SCALE_Y, SHELL_SCALE);
         root.position.set(...SHELL_POSITION);
       } else if (PARTITION_IDS.includes(id))
         root.position.set(0, 0, PARTITION_OFFSET_Z[id]);
@@ -1801,8 +1800,10 @@ function CameraRig({
         .copy(target.current)
         .add(
           view === "top"
-            ? new THREE.Vector3(0.01, 48 * fit, 0)
-            : new THREE.Vector3(29 * fit, 29 * fit, 35 * fit),
+            ? new THREE.Vector3(0.01, 40 * fit, 0)
+            : new THREE.Vector3(29, 29, 35)
+                .normalize()
+                .multiplyScalar(34 * fit),
         );
     clock.current = 0;
   }, [focusKey, view, size.width, size.height]);
@@ -1980,50 +1981,6 @@ function DevicePins({ selected, onSelect }: Pick<Props, "selected" | "onSelect">
   );
 }
 
-const FLOAT_IDS: EquipmentId[] = ["E06", "E17", "E14", "E13", "E18"];
-function DeviceStatusFloats({
-  simulation,
-  hidden,
-}: Pick<Props, "simulation"> & { hidden: boolean }) {
-  const labels = useRef(new Map<EquipmentId, HTMLSpanElement>());
-  useFrame(() => {
-    for (const id of FLOAT_IDS) {
-      const element = labels.current.get(id);
-      if (!element) continue;
-      const status = deviceStatus(simulation.current, id);
-      if (element.textContent !== status) element.textContent = status;
-      element.dataset.tone = statusTone(status);
-      element.hidden = hidden;
-    }
-  });
-  return (
-    <>
-      {FLOAT_IDS.map((id) => {
-        const [x, , z] = center(id);
-        return (
-          <Html
-            key={`float-${id}`}
-            position={[x, cad[id].bounds[4] + 1.05, z]}
-            center
-            zIndexRange={[11, 0]}
-          >
-            <span
-              className="device-float"
-              data-tone="run"
-              ref={(node) => {
-                if (node) labels.current.set(id, node);
-                else labels.current.delete(id);
-              }}
-            >
-              运行中
-            </span>
-          </Html>
-        );
-      })}
-    </>
-  );
-}
-
 export default function ActualScene(props: Props) {
   const [loadState, setLoadState] = useState("正在加载真实 CAD…");
   const elements = useRef(new Map<string, HTMLElement>());
@@ -2106,10 +2063,6 @@ export default function ActualScene(props: Props) {
             <SmallStocks {...props} />
             <Packing simulation={props.simulation} />
             <EquipmentMotion simulation={props.simulation} />
-            <DeviceStatusFloats
-              simulation={props.simulation}
-              hidden={props.view === "focus"}
-            />
             {props.view === "focus" && (
               <DevicePins
                 selected={props.selected}

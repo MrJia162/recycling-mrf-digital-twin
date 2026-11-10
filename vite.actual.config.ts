@@ -27,6 +27,9 @@ export default defineConfig({
           resolve('actual-assets/plant-review.glb'),
           resolve('dist-actual/actual-assets/plant-review.glb'),
         );
+        cpSync(resolve('actual-assets/images'), resolve('dist-actual/actual-assets/images'), {
+          recursive: true,
+        });
       },
     },
   ],

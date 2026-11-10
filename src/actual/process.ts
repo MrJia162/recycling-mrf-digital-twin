@@ -5,6 +5,25 @@ export const EQUIPMENT = mapping.equipment;
 export type EquipmentId = keyof typeof EQUIPMENT;
 export type Point = [number, number, number];
 export const EQUIPMENT_IDS = Object.keys(EQUIPMENT) as EquipmentId[];
+export const EQUIPMENT_FLOW_IDS: EquipmentId[] = [
+  'E06',
+  'E17',
+  'E02',
+  'E11',
+  'E12',
+  'E09',
+  'E18',
+  'E04',
+  'E16',
+  'E15',
+  'E05',
+  'E03',
+  'E07',
+  'E14',
+  'E08',
+  'E10',
+  'E13',
+];
 export const GRADES = [
   '3A',
   'MIXED',
