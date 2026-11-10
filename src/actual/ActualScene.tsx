@@ -37,7 +37,7 @@ import { batchPlant, extractBalerDoor } from "./cad";
 export type CameraView = "overview" | "top" | "focus";
 interface Props {
   simulation: ActualSimulation;
-  selected: EquipmentId;
+  selected: EquipmentId | null;
   onSelect: (id: EquipmentId) => void;
   xray: boolean;
   paths: boolean;
@@ -1753,14 +1753,14 @@ function CameraRig({
   const desired = useRef(new THREE.Vector3()),
     target = useRef(new THREE.Vector3());
   const { camera, size } = useThree();
-  const focusKey = view === "focus" ? selected : "";
+  const focusKey = view === "focus" && selected ? selected : "";
   useEffect(() => {
     const fit = Math.max(
       1,
       Math.min(1.5, size.height / Math.max(1, size.width)),
     );
     target.current.set(-2.5 + MODEL_OFFSET[0], 2.5, -0.4 + MODEL_OFFSET[2]);
-    if (view === "focus") {
+    if (view === "focus" && selected) {
       const point = center(selected);
       target.current.set(
         point[0] + MODEL_OFFSET[0],

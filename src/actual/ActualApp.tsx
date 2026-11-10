@@ -114,13 +114,13 @@ export default function ActualApp() {
       ),
   );
   const [speed, setSpeed] = useState(1),
-    [selected, setSelected] = useState<EquipmentId>("E17");
+    [selected, setSelected] = useState<EquipmentId | null>(null);
   const [showStandardSections, setShowStandardSections] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
   const [zoomShot, setZoomShot] = useState<number | null>(null);
-  const [xray, setXray] = useState(true),
+  const [xray, setXray] = useState(false),
     [paths, setPaths] = useState(false),
-    [shell, setShell] = useState(true),
+    [shell, setShell] = useState(false),
     [axes, setAxes] = useState(false);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
@@ -156,7 +156,7 @@ export default function ActualApp() {
         uiTime = 0;
       }
       if (simulation.current.time >= PLAYBACK_HORIZON) {
-        setPlaying(false);
+        simulation.seek(0);
         refresh();
       }
     };
@@ -192,8 +192,8 @@ export default function ActualApp() {
     refresh();
   };
   const state = simulation.current,
-    status = deviceStatus(state, selected),
-    tone = statusTone(status);
+    status = selected ? deviceStatus(state, selected) : "",
+    tone = selected ? statusTone(status) : "";
   const baled = state.bales.reduce((sum, bale) => sum + bale.count, 0);
   const job = state.job;
   const gate = openGate(state) ? `${openGate(state)} 开启` : "两仓关闭";
@@ -337,7 +337,13 @@ export default function ActualApp() {
                 <button
                   key={id}
                   aria-pressed={view === id}
-                  onClick={() => setView(id)}
+                  onClick={() => {
+                    if (id !== "focus") {
+                      setSelected(null);
+                      setShowStandardSections(false);
+                    }
+                    setView(id);
+                  }}
                 >
                   {label}
                 </button>
@@ -389,7 +395,9 @@ export default function ActualApp() {
             <div className="panel-title">
               <span className="panel-title-mark">《</span>
               <h2>设备详情</h2>
-              <span className={`device-state ${tone}`}>{status}</span>
+              {selected && (
+                <span className={`device-state ${tone}`}>{status}</span>
+              )}
             </div>
             <div className="panel-body">
               <label className="sr-only" htmlFor="actual-device">
@@ -397,86 +405,98 @@ export default function ActualApp() {
               </label>
               <select
                 id="actual-device"
-                value={selected}
-                onChange={(event) =>
-                  selectDevice(event.target.value as EquipmentId)
-                }
+                value={selected ?? ""}
+                onChange={(event) => {
+                  const id = event.target.value as EquipmentId;
+                  if (id) selectDevice(id);
+                }}
               >
+                <option value="" disabled>
+                  请选择设备
+                </option>
                 {EQUIPMENT_IDS.map((id) => (
                   <option key={id} value={id}>
                     {id} · {EQUIPMENT[id]}
                   </option>
                 ))}
               </select>
-              <h2 className="equipment-name">
-                <span>{selected}</span>
-                {EQUIPMENT[selected]}
-              </h2>
-              <label className="power-switch">
-                <span>模拟设备启用</span>
-                <input
-                  type="checkbox"
-                  checked={state.power[selected]}
-                  onChange={(event) => {
-                    simulation.setPower(selected, event.target.checked);
-                    refresh();
-                  }}
-                />
-              </label>
-              {selected === "E17" && (
-                <div className="sorter-detail">
-                  <p>
-                    <span>简介</span>
-                    自研“AI
-                    分选机”，按识别结果将材质分出三色瓶（PET）与杂瓶，分别风送至
-                    E02、E03
-                    中转仓，搭载“自研训练大模型”，实现现场实际使用，反馈训练，迭代优化的正反馈使用场景。
-                  </p>
-                  <dl>
-                    <div>
-                      <dt>分拣次数</dt>
-                      <dd>{state.sorted} 次</dd>
-                    </div>
-                    <div>
-                      <dt>识别精度</dt>
-                      <dd>99.2 %</dd>
-                    </div>
-                  </dl>
-                  {view === "focus" && (
-                    <div className="sorter-shots">
-                      <span>识别照片</span>
-                      <div>
-                        {SORTER_SHOTS.map((name, index) => (
-                          <button
-                            key={name}
-                            type="button"
-                            className="sorter-shot"
-                            aria-label={`放大识别照片 ${index + 1}`}
-                            onClick={() => setZoomShot(index)}
-                          >
-                            <img
-                              src={
-                                new URL(
-                                  `./actual-assets/images/${name}`,
-                                  document.baseURI,
-                                ).href
-                              }
-                              alt={`分选机识别照片 ${index + 1}`}
-                              loading="lazy"
-                            />
-                          </button>
-                        ))}
-                      </div>
+              {selected ? (
+                <>
+                  <h2 className="equipment-name">
+                    <span>{selected}</span>
+                    {EQUIPMENT[selected]}
+                  </h2>
+                  <label className="power-switch">
+                    <span>模拟设备启用</span>
+                    <input
+                      type="checkbox"
+                      checked={state.power[selected]}
+                      onChange={(event) => {
+                        simulation.setPower(selected, event.target.checked);
+                        refresh();
+                      }}
+                    />
+                  </label>
+                  {selected === "E17" && (
+                    <div className="sorter-detail">
+                      <p>
+                        <span>简介</span>
+                        自研“AI
+                        分选机”，按识别结果将材质分出三色瓶（PET）与杂瓶，分别风送至
+                        E02、E03
+                        中转仓，搭载“自研训练大模型”，实现现场实际使用，反馈训练，迭代优化的正反馈使用场景。
+                      </p>
+                      <dl>
+                        <div>
+                          <dt>分拣次数</dt>
+                          <dd>{state.sorted} 次</dd>
+                        </div>
+                        <div>
+                          <dt>识别精度</dt>
+                          <dd>99.2 %</dd>
+                        </div>
+                      </dl>
+                      {view === "focus" && (
+                        <div className="sorter-shots">
+                          <span>识别照片</span>
+                          <div>
+                            {SORTER_SHOTS.map((name, index) => (
+                              <button
+                                key={name}
+                                type="button"
+                                className="sorter-shot"
+                                aria-label={`放大识别照片 ${index + 1}`}
+                                onClick={() => setZoomShot(index)}
+                              >
+                                <img
+                                  src={
+                                    new URL(
+                                      `./actual-assets/images/${name}`,
+                                      document.baseURI,
+                                    ).href
+                                  }
+                                  alt={`分选机识别照片 ${index + 1}`}
+                                  loading="lazy"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </>
+              ) : (
+                <p className="device-empty">
+                  点击左侧设备列表或三维视图中的设备查看详情。
+                </p>
               )}
             </div>
           </section>
 
           {showStandardSections && (
             <>
-              {SILO_DEVICE_IDS.has(selected) && (
+              {selected !== null && SILO_DEVICE_IDS.has(selected) && (
                 <section
                   className="silo-panel panel-frame"
                   aria-label="四个料仓库存"

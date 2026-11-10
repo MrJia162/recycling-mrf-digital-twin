@@ -1026,6 +1026,12 @@ input[type='range']::-moz-range-thumb {
   overflow-wrap: anywhere;
   margin: 0;
 }
+.device-empty {
+  margin: 14px 0 0;
+  color: #7e9cb0;
+  font-size: 11px;
+  line-height: 1.7;
+}
 .sorter-detail {
   margin-top: 12px;
   padding-top: 10px;
