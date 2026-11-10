@@ -11,9 +11,11 @@
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import * as THREE from "three";
+import { concreteFloor, corrugatedPanel } from "../scene/textures";
 import { ActualSimulation, openGate } from "./engine";
 import {
   CAPACITY,
@@ -32,14 +34,17 @@ import {
   type Point,
 } from "./process";
 import cad from "./cad-layout.json";
-import { batchPlant, extractBalerDoor } from "./cad";
+import {
+  batchPlant,
+  extractBalerDoor,
+  removeEmbeddedPosts,
+} from "./cad";
 
 export type CameraView = "overview" | "top" | "focus";
 interface Props {
   simulation: ActualSimulation;
   selected: EquipmentId | null;
   onSelect: (id: EquipmentId) => void;
-  xray: boolean;
   paths: boolean;
   shell: boolean;
   view: CameraView;
@@ -53,32 +58,32 @@ function routeColor(id: string) {
         ? "#e9bf75"
         : "#4bd6ff";
 }
-const SCENE_BLUE = "#04101f";
-const DEVICE_BLUE = new THREE.Color("#3f7fa6");
+const SCENE_BLUE = "#0a1014";
+const DEVICE_STEEL = new THREE.Color("#8d9091");
 function deviceTone(source: THREE.Color): THREE.Color {
   const color = source.clone().convertLinearToSRGB();
   const hsl = { h: 0, s: 0, l: 0 };
   color.getHSL(hsl);
   if (hsl.s < 0.16) {
-    const light = THREE.MathUtils.clamp(hsl.l * 0.72 + 0.12, 0.1, 0.82);
-    color.setHSL(0.56, 0.24, light);
+    const light = THREE.MathUtils.clamp(hsl.l * 0.72 + 0.2, 0.2, 0.86);
+    color.setHSL(0.09, 0.06, light);
   } else if (hsl.h >= 0.07 && hsl.h <= 0.17) {
     color.setHSL(
       0.1,
-      0.6,
-      THREE.MathUtils.clamp(hsl.l * 0.9 + 0.16, 0.3, 0.62),
+      0.58,
+      THREE.MathUtils.clamp(hsl.l * 0.9 + 0.14, 0.32, 0.62),
     );
   } else if (hsl.h <= 0.05 || hsl.h >= 0.94) {
-    color.setHSL(0.015, 0.62, 0.48);
+    color.setHSL(0.015, 0.55, 0.46);
   } else {
     color.setHSL(
-      0.54 + (hsl.l > 0.55 ? 0.02 : 0),
-      0.52,
-      THREE.MathUtils.clamp(hsl.l * 0.55 + 0.22, 0.22, 0.68),
+      hsl.h,
+      Math.min(0.5, hsl.s * 0.8),
+      THREE.MathUtils.clamp(hsl.l * 0.7 + 0.2, 0.24, 0.7),
     );
   }
   color.convertSRGBToLinear();
-  return color.lerp(DEVICE_BLUE, 0.12);
+  return color.lerp(DEVICE_STEEL, 0.1);
 }
 const FLOW_SPEED = 2.4;
 function FlowPaths() {
@@ -219,9 +224,9 @@ const MODEL_OFFSET: Point = [
   0,
   cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
 ];
-const SHELL_SCALE = 1.5;
+const SHELL_SCALE = 1.8;
 const SHELL_FLOOR_Y = 1.2;
-const SHELL_EXTRA_HEIGHT = 2;
+const SHELL_EXTRA_HEIGHT = 3;
 const SHELL_BASE_HEIGHT = cad.E01.bounds[4] - SHELL_FLOOR_Y;
 const SHELL_SCALE_Y =
   (SHELL_BASE_HEIGHT * SHELL_SCALE + SHELL_EXTRA_HEIGHT) / SHELL_BASE_HEIGHT;
@@ -237,6 +242,22 @@ const SHELL_POSITION: Point = [
 ];
 const SHELL_WIDTH = (cad.E01.bounds[3] - cad.E01.bounds[0]) * SHELL_SCALE;
 const SHELL_DEPTH = (cad.E01.bounds[5] - cad.E01.bounds[2]) * SHELL_SCALE;
+const SHELL_WORLD = {
+  x0: SHELL_POSITION[0] + SHELL_SCALE * cad.E01.bounds[0],
+  x1: SHELL_POSITION[0] + SHELL_SCALE * cad.E01.bounds[3],
+  z0: SHELL_POSITION[2] + SHELL_SCALE * cad.E01.bounds[2],
+  z1: SHELL_POSITION[2] + SHELL_SCALE * cad.E01.bounds[5],
+  floor: SHELL_POSITION[1] + SHELL_SCALE_Y * SHELL_FLOOR_Y,
+  top: SHELL_POSITION[1] + SHELL_SCALE_Y * cad.E01.bounds[4],
+} as const;
+const SHELL_CENTER_X = (SHELL_WORLD.x0 + SHELL_WORLD.x1) / 2;
+const SHELL_CENTER_Z = (SHELL_WORLD.z0 + SHELL_WORLD.z1) / 2;
+const EMBEDDED_POSTS = [
+  { x: 0.06, z: -13.61, half: 0.55 },
+  { x: 0.06, z: -4.39, half: 0.55 },
+  { x: 0.06, z: 4.61, half: 0.55 },
+  { x: 0.06, z: 13.61, half: 0.55 },
+];
 const PARTITION_IDS = ["E19", "E20", "E21", "E22", "E23", "E24"];
 const STORAGE_START_Z = cad.E01.bounds[5] - 0.5;
 const STORAGE_BAY_WIDTH = 4;
@@ -779,18 +800,285 @@ function ManualTransferRoute({
   );
 }
 
+function SceneEnvironment() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const texture = pmrem.fromScene(room, 0.04).texture;
+    scene.environment = texture;
+    scene.environmentIntensity = 0.45;
+    return () => {
+      scene.environment = null;
+      texture.dispose();
+      room.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
+  return null;
+}
+
+function HallFloor() {
+  const map = useMemo(
+    () =>
+      concreteFloor(
+        Math.max(1, Math.round(SHELL_WIDTH / 4)),
+        Math.max(1, Math.round(SHELL_DEPTH / 4)),
+      ),
+    [],
+  );
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[
+        cad.E01.center[0],
+        SHELL_WORLD.floor + 0.02,
+        cad.E01.center[2],
+      ]}
+      receiveShadow
+    >
+      <planeGeometry args={[SHELL_WIDTH, SHELL_DEPTH]} />
+      <meshStandardMaterial
+        map={map ?? undefined}
+        color="#c9c7c1"
+        roughness={0.34}
+        metalness={0.24}
+      />
+    </mesh>
+  );
+}
+
+const HALL_STEEL = "#3e4347";
+function HallShell() {
+  const width = SHELL_WORLD.x1 - SHELL_WORLD.x0;
+  const depth = SHELL_WORLD.z1 - SHELL_WORLD.z0;
+  const height = SHELL_WORLD.top - SHELL_WORLD.floor;
+  const midY = SHELL_WORLD.floor + height / 2;
+  const longWallMap = useMemo(
+    () =>
+      corrugatedPanel(
+        Math.max(1, Math.round(width / 2.6)),
+        Math.max(1, Math.round(height / 4)),
+      ),
+    [width, height],
+  );
+  const shortWallMap = useMemo(
+    () =>
+      corrugatedPanel(
+        Math.max(1, Math.round(depth / 2.6)),
+        Math.max(1, Math.round(height / 4)),
+      ),
+    [depth, height],
+  );
+  const trussZs = useMemo(
+    () =>
+      Array.from(
+        { length: 9 },
+        (_, index) => SHELL_WORLD.z0 + (depth * (index + 0.5)) / 9,
+      ),
+    [depth],
+  );
+  const purlinXs = useMemo(
+    () =>
+      Array.from(
+        { length: 5 },
+        (_, index) => SHELL_WORLD.x0 + (width * (index + 1)) / 6,
+      ),
+    [width],
+  );
+  const lightRows = [
+    SHELL_WORLD.x0 + width * 0.24,
+    SHELL_CENTER_X,
+    SHELL_WORLD.x1 - width * 0.24,
+  ];
+  const lightZs = useMemo(
+    () =>
+      Array.from(
+        { length: 8 },
+        (_, index) => SHELL_WORLD.z0 + (depth * (index + 0.5)) / 8,
+      ),
+    [depth],
+  );
+  return (
+    <group>
+      <mesh
+        position={[SHELL_CENTER_X, midY, SHELL_WORLD.z0 + 0.16]}
+        receiveShadow
+      >
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial
+          map={longWallMap ?? undefined}
+          color="#dedbd3"
+          roughness={0.7}
+          metalness={0.14}
+        />
+      </mesh>
+      <mesh
+        position={[SHELL_CENTER_X, midY, SHELL_WORLD.z1 - 0.16]}
+        rotation={[0, Math.PI, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial
+          map={longWallMap ?? undefined}
+          color="#dedbd3"
+          roughness={0.7}
+          metalness={0.14}
+        />
+      </mesh>
+      <mesh
+        position={[SHELL_WORLD.x0 + 0.16, midY, SHELL_CENTER_Z]}
+        rotation={[0, Math.PI / 2, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[depth, height]} />
+        <meshStandardMaterial
+          map={shortWallMap ?? undefined}
+          color="#dedbd3"
+          roughness={0.7}
+          metalness={0.14}
+        />
+      </mesh>
+      <mesh
+        position={[SHELL_WORLD.x1 - 0.16, midY, SHELL_CENTER_Z]}
+        rotation={[0, -Math.PI / 2, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[depth, height]} />
+        <meshStandardMaterial
+          map={shortWallMap ?? undefined}
+          color="#dedbd3"
+          roughness={0.7}
+          metalness={0.14}
+        />
+      </mesh>
+      {[0.26, 0.52, 0.78].map((ratio) => (
+        <group key={`hall-girt-${ratio}`}>
+          <mesh
+            position={[
+              SHELL_CENTER_X,
+              SHELL_WORLD.floor + height * ratio,
+              SHELL_WORLD.z0 + 0.32,
+            ]}
+          >
+            <boxGeometry args={[width, 0.16, 0.16]} />
+            <meshStandardMaterial
+              color={HALL_STEEL}
+              roughness={0.5}
+              metalness={0.55}
+            />
+          </mesh>
+          <mesh
+            position={[
+              SHELL_CENTER_X,
+              SHELL_WORLD.floor + height * ratio,
+              SHELL_WORLD.z1 - 0.32,
+            ]}
+          >
+            <boxGeometry args={[width, 0.16, 0.16]} />
+            <meshStandardMaterial
+              color={HALL_STEEL}
+              roughness={0.5}
+              metalness={0.55}
+            />
+          </mesh>
+          <mesh
+            position={[
+              SHELL_WORLD.x0 + 0.32,
+              SHELL_WORLD.floor + height * ratio,
+              SHELL_CENTER_Z,
+            ]}
+          >
+            <boxGeometry args={[0.16, 0.16, depth]} />
+            <meshStandardMaterial
+              color={HALL_STEEL}
+              roughness={0.5}
+              metalness={0.55}
+            />
+          </mesh>
+          <mesh
+            position={[
+              SHELL_WORLD.x1 - 0.32,
+              SHELL_WORLD.floor + height * ratio,
+              SHELL_CENTER_Z,
+            ]}
+          >
+            <boxGeometry args={[0.16, 0.16, depth]} />
+            <meshStandardMaterial
+              color={HALL_STEEL}
+              roughness={0.5}
+              metalness={0.55}
+            />
+          </mesh>
+        </group>
+      ))}
+      {trussZs.map((z, index) => (
+        <mesh
+          key={`hall-truss-${index}`}
+          position={[SHELL_CENTER_X, SHELL_WORLD.top - 1.0, z]}
+        >
+          <boxGeometry args={[width - 0.8, 0.32, 0.22]} />
+          <meshStandardMaterial
+            color={HALL_STEEL}
+            roughness={0.5}
+            metalness={0.55}
+          />
+        </mesh>
+      ))}
+      {purlinXs.map((x, index) => (
+        <mesh
+          key={`hall-purlin-${index}`}
+          position={[x, SHELL_WORLD.top - 1.34, SHELL_CENTER_Z]}
+        >
+          <boxGeometry args={[0.16, 0.22, depth - 0.8]} />
+          <meshStandardMaterial
+            color={HALL_STEEL}
+            roughness={0.5}
+            metalness={0.55}
+          />
+        </mesh>
+      ))}
+      {lightRows.map((x) =>
+        lightZs.map((z, index) => (
+          <mesh
+            key={`hall-light-${x}-${index}`}
+            position={[x, SHELL_WORLD.top - 2.5, z]}
+          >
+            <boxGeometry args={[0.42, 0.08, 2.6]} />
+            <meshStandardMaterial
+              color="#ffffff"
+              emissive="#fff4df"
+              emissiveIntensity={2.6}
+              toneMapped={false}
+            />
+          </mesh>
+        )),
+      )}
+      {lightRows.map((x, index) => (
+        <pointLight
+          key={`hall-fill-${index}`}
+          position={[x, SHELL_WORLD.top - 3.4, SHELL_CENTER_Z]}
+          intensity={45}
+          distance={46}
+          decay={2}
+          color="#fff1da"
+        />
+      ))}
+    </group>
+  );
+}
+
 const BALER_DOOR_TRAVEL = 1.63;
 function Plant({
   selected,
   view,
-  xray,
   paths,
   shell,
   simulation,
   onLoad,
 }: Pick<
   Props,
-  "selected" | "view" | "xray" | "paths" | "shell" | "simulation"
+  "selected" | "view" | "paths" | "shell" | "simulation"
 > & {
   onLoad: (text: string) => void;
 }) {
@@ -820,6 +1108,8 @@ function Plant({
         try {
           const door = extractBalerDoor(gltf.scene);
           batched = batchPlant(gltf.scene);
+          const shell = batched.getObjectByName("E01");
+          if (shell) removeEmbeddedPosts(shell, EMBEDDED_POSTS);
           if (door) {
             const baler = batched.getObjectByName("E13");
             if (baler) {
@@ -836,6 +1126,7 @@ function Plant({
         batched.traverse((object) => {
           if (!/^E\d{2}$/.test(object.name)) return;
           roots.current.set(object.name, object);
+          const isShell = object.name === "E01";
           const materials = new Map<string, THREE.MeshStandardMaterial>();
           object.traverse((child) => {
             if (!(child instanceof THREE.Mesh)) return;
@@ -846,19 +1137,27 @@ function Plant({
               if (!materials.has(original.uuid)) {
                 const copy = original.clone();
                 if (copy instanceof THREE.MeshStandardMaterial) {
-                  copy.color.copy(deviceTone(copy.color));
-                  copy.metalness = THREE.MathUtils.clamp(
-                    copy.metalness * 0.6 + 0.32,
-                    0.32,
-                    0.75,
-                  );
-                  copy.roughness = THREE.MathUtils.clamp(
-                    copy.roughness * 0.85 + 0.08,
-                    0.34,
-                    0.85,
-                  );
-                  copy.emissive.set("#07263d");
-                  copy.emissiveIntensity = 0.08;
+                  if (isShell) {
+                    copy.color.set("#cfccc4");
+                    copy.metalness = 0.12;
+                    copy.roughness = 0.78;
+                    copy.emissive.set("#141518");
+                    copy.emissiveIntensity = 0.05;
+                  } else {
+                    copy.color.copy(deviceTone(copy.color));
+                    copy.metalness = THREE.MathUtils.clamp(
+                      copy.metalness * 0.6 + 0.28,
+                      0.28,
+                      0.7,
+                    );
+                    copy.roughness = THREE.MathUtils.clamp(
+                      copy.roughness * 0.85 + 0.12,
+                      0.38,
+                      0.86,
+                    );
+                    copy.emissive.set("#121a1f");
+                    copy.emissiveIntensity = 0.06;
+                  }
                 }
                 materials.set(original.uuid, copy);
               }
@@ -918,7 +1217,7 @@ function Plant({
       }
       const isSelected = view === "focus" && id === selected;
       const stock = ["E02", "E03", "E04", "E05"].includes(id);
-      const faded = (xray || paths) && id !== "E01";
+      const faded = paths && id !== "E01";
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         if (id === "E01") {
@@ -943,14 +1242,20 @@ function Plant({
           material.opacity = opacity;
           material.depthWrite = !material.transparent;
           if (material instanceof THREE.MeshStandardMaterial) {
-            material.emissive.set(isSelected ? "#0e5f7a" : "#07263d");
-            material.emissiveIntensity = isSelected ? 0.42 : 0.08;
-            material.roughness = Math.max(0.45, material.roughness);
+            if (id === "E01") {
+              material.emissive.set("#141518");
+              material.emissiveIntensity = 0.05;
+              material.roughness = 0.78;
+            } else {
+              material.emissive.set(isSelected ? "#0e5f7a" : "#121a1f");
+              material.emissiveIntensity = isSelected ? 0.42 : 0.06;
+              material.roughness = Math.max(0.38, material.roughness);
+            }
           }
         }
       });
     }
-  }, [model, xray, paths, shell, selected, view]);
+  }, [model, paths, shell, selected, view]);
   if (!model) return null;
   return <primitive object={model} />;
 }
@@ -1900,51 +2205,43 @@ export default function ActualScene(props: Props) {
       >
         <color attach="background" args={[SCENE_BLUE]} />
         <fog attach="fog" args={[SCENE_BLUE, 74, 172]} />
-        <hemisphereLight args={["#d3efff", "#081726", 2.1]} />
+        <SceneEnvironment />
+        <hemisphereLight args={["#e9eef0", "#2b2723", 1.8]} />
         <directionalLight
           position={[18, 30, 12]}
-          intensity={2.9}
-          color="#eaf7ff"
+          intensity={2.4}
+          color="#fff8ec"
         />
         <directionalLight
           position={[-20, 14, -18]}
-          intensity={1.15}
-          color="#4fb9ff"
+          intensity={0.8}
+          color="#dcecff"
         />
         <pointLight
           position={[-2, 13, 0]}
-          intensity={110}
-          distance={48}
+          intensity={80}
+          distance={52}
           decay={2}
-          color="#38c6ff"
+          color="#ffe7c4"
         />
         <SceneBoundary
           onError={() => setLoadState("三维画面暂不可用，仿真与面板仍可操作。")}
         >
           <Plant {...props} onLoad={setLoadState} />
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[cad.E01.center[0], 1.16, cad.E01.center[2]]}
-          >
-            <planeGeometry args={[SHELL_WIDTH, SHELL_DEPTH]} />
-            <meshStandardMaterial
-              color="#0e2a40"
-              roughness={0.84}
-              metalness={0.32}
-            />
-          </mesh>
+          <HallFloor />
           <gridHelper
             args={[
               Math.max(SHELL_WIDTH, SHELL_DEPTH),
               Math.round(Math.max(SHELL_WIDTH, SHELL_DEPTH) / 2),
-              "#2a7ba3",
-              "#123a52",
+              "#7e888c",
+              "#3a4448",
             ]}
-            position={[cad.E01.center[0], 1.17, cad.E01.center[2]]}
+            position={[cad.E01.center[0], SHELL_WORLD.floor + 0.03, cad.E01.center[2]]}
             material-transparent
-            material-opacity={0.22}
+            material-opacity={0.12}
             material-depthWrite={false}
           />
+          {props.shell && <HallShell />}
           <StorageZones />
           <PostBalerStacking simulation={props.simulation} />
           <group position={MODEL_OFFSET}>

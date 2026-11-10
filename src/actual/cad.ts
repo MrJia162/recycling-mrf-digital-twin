@@ -221,3 +221,78 @@ export function batchPlant(source: THREE.Group): THREE.Group {
   sourceGeometries.forEach((geometry) => geometry.dispose());
   return result;
 }
+
+export interface EmbeddedPost {
+  x: number;
+  z: number;
+  half: number;
+}
+
+/** Remove low interior posts baked into the CAD shell while keeping the floor intact. */
+export function removeEmbeddedPosts(
+  root: THREE.Object3D,
+  posts: readonly EmbeddedPost[],
+): void {
+  const point = new THREE.Vector3();
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const geometry = child.geometry;
+    const position = geometry.getAttribute('position');
+    if (!position) return;
+    const normal = geometry.getAttribute('normal');
+    const index = geometry.getIndex();
+    const count = index ? index.count : position.count;
+    const positions: number[] = [];
+    const normals: number[] = [];
+    for (let start = 0; start + 2 < count; start += 3) {
+      const corners = [0, 1, 2].map((offset) =>
+        index ? index.getX(start + offset) : start + offset,
+      );
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let inside = true;
+      for (const corner of corners) {
+        point.fromBufferAttribute(position, corner);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+        if (
+          !posts.some(
+            (post) =>
+              Math.abs(point.x - post.x) <= post.half &&
+              Math.abs(point.z - post.z) <= post.half,
+          )
+        )
+          inside = false;
+      }
+      const isPost = inside && minY >= 1.1 && maxY >= 1.5 && maxY <= 3.4;
+      if (isPost) continue;
+      for (const corner of corners) {
+        positions.push(
+          position.getX(corner),
+          position.getY(corner),
+          position.getZ(corner),
+        );
+        if (normal) {
+          normals.push(
+            normal.getX(corner),
+            normal.getY(corner),
+            normal.getZ(corner),
+          );
+        }
+      }
+    }
+    const filtered = new THREE.BufferGeometry();
+    filtered.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(positions, 3),
+    );
+    if (normals.length)
+      filtered.setAttribute(
+        'normal',
+        new THREE.Float32BufferAttribute(normals, 3),
+      );
+    else filtered.computeVertexNormals();
+    geometry.dispose();
+    child.geometry = filtered;
+  });
+}

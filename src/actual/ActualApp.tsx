@@ -119,8 +119,7 @@ export default function ActualApp() {
   const [showPlayback, setShowPlayback] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
   const [zoomShot, setZoomShot] = useState<number | null>(null);
-  const [xray, setXray] = useState(false),
-    [paths, setPaths] = useState(false),
+  const [paths, setPaths] = useState(false),
     [shell, setShell] = useState(false);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
@@ -327,7 +326,6 @@ export default function ActualApp() {
             simulation={simulation}
             selected={selected}
             onSelect={selectDevice}
-            xray={xray}
             paths={paths}
             shell={shell}
             view={view}
@@ -357,12 +355,6 @@ export default function ActualApp() {
               ))}
             </div>
             <div>
-              <button
-                aria-pressed={xray}
-                onClick={() => setXray((value) => !value)}
-              >
-                工艺透视
-              </button>
               <button
                 aria-pressed={paths}
                 onClick={() => setPaths((value) => !value)}
