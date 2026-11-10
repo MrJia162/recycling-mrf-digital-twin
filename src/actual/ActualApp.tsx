@@ -1,7 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Play, RotateCcw } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import {
+  Bot,
+  Boxes,
+  Cpu,
+  Factory,
+  Gauge,
+  Hexagon,
+  Layers,
+  Package,
+  Pause,
+  Play,
+  Radar,
+  RotateCcw,
+  Settings,
+  Users,
+} from "lucide-react";
 import ActualScene, { type CameraView } from "./ActualScene";
-import { ActualSimulation, deviceStatus, openGate } from "./engine";
+import { ActualSimulation, deviceStatus, openGate, statusTone } from "./engine";
 import {
   CAPACITY,
   EQUIPMENT,
@@ -13,16 +34,8 @@ import {
   type EquipmentId,
   type Parameter,
 } from "./process";
-import cad from "./cad-layout.json";
 import "./actual.css";
 
-const PHASE_NAMES = {
-  MANUAL_TRANSFER: "人工转运",
-  DISCHARGING: "料仓放料",
-  CONVEYING: "输送供料",
-  COMPRESSING: "压缩成型",
-  EJECTING: "出包",
-};
 const PARAMETERS: {
   id: Parameter;
   label: string;
@@ -40,6 +53,30 @@ const STOPS = [
   { time: 60, label: "二次分选" },
   { time: 100, label: "自动打包" },
 ];
+const DEVICE_ICONS: Record<string, typeof Cpu> = {
+  分选: Cpu,
+  机械手: Bot,
+  打包: Package,
+  仓: Boxes,
+  平台: Users,
+  脱标: Settings,
+  输送: Layers,
+  皮带: Layers,
+  爬坡: Layers,
+  链板: Layers,
+  螺旋: Layers,
+};
+function DeviceIcon({ id }: { id: EquipmentId }) {
+  const name = EQUIPMENT[id];
+  const key = Object.keys(DEVICE_ICONS).find((token) => name.includes(token));
+  const Icon = key ? DEVICE_ICONS[key] : Factory;
+  return (
+    <span className="device-hex">
+      <Hexagon className="device-hex-frame" size={32} strokeWidth={1.1} />
+      <Icon className="device-hex-icon" size={14} strokeWidth={1.6} />
+    </span>
+  );
+}
 function formatTime(time: number) {
   return `${Math.floor(time / 60)
     .toString()
@@ -47,12 +84,18 @@ function formatTime(time: number) {
     .toString()
     .padStart(2, "0")}`;
 }
+function formatClock(date: Date) {
+  return [date.getHours(), date.getMinutes(), date.getSeconds()]
+    .map((value) => value.toString().padStart(2, "0"))
+    .join(":");
+}
 
 export default function ActualApp() {
   const ref = useRef<ActualSimulation | null>(null);
   if (!ref.current) ref.current = new ActualSimulation();
   const simulation = ref.current;
   const [, tick] = useState(0);
+  const [clock, setClock] = useState(() => new Date());
   const [playing, setPlaying] = useState(
     () =>
       !(
@@ -69,6 +112,10 @@ export default function ActualApp() {
     [shell, setShell] = useState(true),
     [axes, setAxes] = useState(false);
   const refresh = useCallback(() => tick((value) => value + 1), []);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     let handle = 0,
       last = performance.now(),
@@ -114,6 +161,7 @@ export default function ActualApp() {
   const selectDevice = useCallback((id: EquipmentId) => {
     setSelected(id);
     setShowStandardSections(id !== "E17");
+    setView("focus");
   }, []);
   const seek = (time: number) => {
     simulation.seek(time);
@@ -121,10 +169,25 @@ export default function ActualApp() {
     refresh();
   };
   const state = simulation.current,
-    status = deviceStatus(state, selected);
+    status = deviceStatus(state, selected),
+    tone = statusTone(status);
   const baled = state.bales.reduce((sum, bale) => sum + bale.count, 0);
   const job = state.job;
   const gate = openGate(state) ? `${openGate(state)} 开启` : "两仓关闭";
+  const powered = EQUIPMENT_IDS.filter((id) => state.power[id]).length;
+  const tones = EQUIPMENT_IDS.map((id) =>
+    statusTone(deviceStatus(state, id)),
+  );
+  const runCount = tones.filter((value) => value === "run").length;
+  const warnCount = tones.filter((value) => value === "warn").length;
+  const alarmCount = tones.filter((value) => value === "alarm").length;
+  const working = state.units.filter(
+    (unit) =>
+      unit.stage === "moving" ||
+      unit.stage === "press" ||
+      unit.stage === "carried",
+  ).length;
+  const health = Math.round((powered / EQUIPMENT_IDS.length) * 100);
   const play = () => {
     if (!playing && state.time >= PLAYBACK_HORIZON) simulation.seek(0);
     setPlaying((value) => !value);
@@ -135,37 +198,101 @@ export default function ActualApp() {
     <div className="actual-app">
       <header className="actual-header">
         <div className="actual-brand">
-          <span className="brand-mark">
+          <span className="brand-mark" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>
           <div>
-            <span className="eyebrow">RELOOP / TONGXIANG</span>
-            <h1>
-              桐乡分拣线<span>设备运行动画</span>
-            </h1>
+            <span className="eyebrow">RELOOP · TONGXIANG</span>
+            <span className="brand-sub">MRF DIGITAL TWIN</span>
           </div>
         </div>
-        <section className="actual-metrics" aria-label="产线模拟统计">
-          <div>
-            <span>累计上料</span>
-            <strong data-testid="received-count">
-              {state.units.length}
-              <small>批</small>
-            </strong>
+        <div className="actual-title">
+          <i className="title-wing" aria-hidden="true" />
+          <div className="title-core">
+            <h1>
+              桐乡分拣中心<span>数字孪生</span>
+            </h1>
+            <small>INDOOR RECYCLING SORTING CENTER · DIGITAL TWIN</small>
           </div>
-          <div>
-            <span>已打包</span>
-            <strong data-testid="baled-count">
-              {baled}
-              <small>批 / {state.bales.length} 包</small>
-            </strong>
-          </div>
-        </section>
+          <i className="title-wing reverse" aria-hidden="true" />
+        </div>
+        <div className="actual-header-side">
+          <span className="live-chip">
+            <i />
+            系统在线
+          </span>
+          <span className="header-clock">{formatClock(clock)}</span>
+          <a className="header-link" href="./index.html">
+            原演示
+          </a>
+        </div>
       </header>
 
       <main className="actual-workspace">
+        <aside className="actual-devices panel-frame" aria-label="设备状态列表">
+          <div className="panel-title">
+            <span className="panel-title-mark">《</span>
+            <h2>设备状态</h2>
+            <small>EQUIPMENT STATUS</small>
+          </div>
+          <div className="device-list">
+            {EQUIPMENT_IDS.map((id) => {
+              const deviceState = deviceStatus(state, id);
+              const deviceTone = statusTone(deviceState);
+              return (
+                <button
+                  key={id}
+                  className={`device-row ${selected === id ? "selected" : ""}`}
+                  onClick={() => selectDevice(id)}
+                  aria-pressed={selected === id}
+                  aria-label={`${id} ${EQUIPMENT[id]} ${deviceState}`}
+                >
+                  <DeviceIcon id={id} />
+                  <span className="device-meta">
+                    <b>{DEVICE_NAMES[id]}</b>
+                    <small>
+                      {id} · {EQUIPMENT[id]}
+                    </small>
+                  </span>
+                  <span className={`device-status ${deviceTone}`}>
+                    {deviceState}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="device-summary">
+            <div
+              className="health-ring"
+              style={
+                {
+                  "--ring-angle": `${health * 3.6}deg`,
+                } as CSSProperties
+              }
+            >
+              <span>
+                {health}
+                <small>%</small>
+              </span>
+            </div>
+            <div className="device-summary-meta">
+              <strong>
+                <Gauge size={13} /> 产线健康度
+              </strong>
+              <span>
+                <i className="run" />
+                运行 {runCount}
+                <i className="warn" />
+                预警 {warnCount}
+                <i className="alarm" />
+                告警 {alarmCount}
+              </span>
+            </div>
+          </div>
+        </aside>
+
         <section className="actual-stage" aria-label="实际产线三维动画">
           <ActualScene
             simulation={simulation}
@@ -237,121 +364,130 @@ export default function ActualApp() {
         </section>
 
         <aside className="actual-inspector" aria-label="实际设备详情与工艺控制">
-          <section className="equipment-detail">
-            <div className="section-heading">
-              <span>设备详情</span>
-              <span
-                className={
-                  state.power[selected]
-                    ? "device-state"
-                    : "device-state stopped"
+          <section className="equipment-detail panel-frame">
+            <div className="panel-title">
+              <span className="panel-title-mark">《</span>
+              <h2>设备详情</h2>
+              <span className={`device-state ${tone}`}>{status}</span>
+            </div>
+            <div className="panel-body">
+              <label className="sr-only" htmlFor="actual-device">
+                选择实际设备
+              </label>
+              <select
+                id="actual-device"
+                value={selected}
+                onChange={(event) =>
+                  selectDevice(event.target.value as EquipmentId)
                 }
               >
-                {status}
-              </span>
+                {EQUIPMENT_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {id} · {EQUIPMENT[id]}
+                  </option>
+                ))}
+              </select>
+              <h2 className="equipment-name">
+                <span>{selected}</span>
+                {EQUIPMENT[selected]}
+              </h2>
+              <label className="power-switch">
+                <span>模拟设备启用</span>
+                <input
+                  type="checkbox"
+                  checked={state.power[selected]}
+                  onChange={(event) => {
+                    simulation.setPower(selected, event.target.checked);
+                    refresh();
+                  }}
+                />
+              </label>
+              {selected === "E17" && (
+                <div className="sorter-detail">
+                  <p>
+                    <span>简介</span>
+                    自研“AI
+                    分选机”，按识别结果将材质分出三色瓶（PET）与杂瓶，分别风送至
+                    E02、E03
+                    中转仓，搭载“自研训练大模型”，实现现场实际使用，反馈训练，迭代优化的正反馈使用场景。
+                  </p>
+                  <dl>
+                    <div>
+                      <dt>分拣次数</dt>
+                      <dd>{state.sorted} 次</dd>
+                    </div>
+                    <div>
+                      <dt>识别精度</dt>
+                      <dd>99.2 %</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </div>
-            <label className="sr-only" htmlFor="actual-device">
-              选择实际设备
-            </label>
-            <select
-              id="actual-device"
-              value={selected}
-              onChange={(event) =>
-                selectDevice(event.target.value as EquipmentId)
-              }
-            >
-              {EQUIPMENT_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {id} · {EQUIPMENT[id]}
-                </option>
-              ))}
-            </select>
-            <h2>
-              <span>{selected}</span>
-              {EQUIPMENT[selected]}
-            </h2>
-            {selected === "E17" && (
-              <div className="sorter-detail">
-                <p>
-                  <span>简介</span>
-                  自研“AI
-                  分选机”，按识别结果将材质分出三色瓶（PET）与杂瓶，分别风送至
-                  E02、E03
-                  中转仓，搭载“自研训练大模型”，实现现场实际使用，反馈训练，迭代优化的正反馈使用场景。
-                </p>
-                <dl>
-                  <div>
-                    <dt>设备编号</dt>
-                    <dd>E17</dd>
-                  </div>
-                  <div>
-                    <dt>状态</dt>
-                    <dd>{status}</dd>
-                  </div>
-                  <div>
-                    <dt>分拣次数</dt>
-                    <dd>{state.sorted} 次</dd>
-                  </div>
-                </dl>
-              </div>
-            )}
           </section>
 
           {showStandardSections && (
             <>
-              <section className="silo-panel" aria-label="四个料仓库存">
-                <div className="section-heading">
-                  <span>料仓存量</span>
+              <section className="silo-panel panel-frame" aria-label="四个料仓库存">
+                <div className="panel-title">
+                  <span className="panel-title-mark">《</span>
+                  <h2>料仓存量</h2>
+                  <small>SILO STOCK</small>
                 </div>
-                {(["E02", "E03", "E04", "E05"] as const).map((id) => {
-                  const count = state.stocks[id].length,
-                    color =
-                      id === "E04"
-                        ? MATERIALS["3A"].color
-                        : id === "E05"
-                          ? MATERIALS.MIXED.color
-                          : id === "E03"
-                            ? "#e9bf75"
-                            : "#5bd7ac";
-                  return (
-                    <button
-                      className={`silo-row ${selected === id ? "selected" : ""}`}
-                      key={id}
-                      onClick={() => selectDevice(id)}
-                      aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
-                    >
-                      <span>
-                        {id} ·{" "}
-                        {id === "E02"
-                          ? "三色中转"
-                          : id === "E03"
-                            ? "杂瓶中转"
-                            : id === "E04"
-                              ? "3A 成品"
-                              : "杂色 PET 成品"}
-                      </span>
-                      <strong>{count} %</strong>
-                      <span className="stock-track">
-                        <i
-                          style={{
-                            width: `${(count / CAPACITY) * 100}%`,
-                            background: color,
-                          }}
-                        />
-                        {(id === "E04" || id === "E05") && (
-                          <b
+                <div className="panel-body">
+                  {(["E02", "E03", "E04", "E05"] as const).map((id) => {
+                    const count = state.stocks[id].length,
+                      color =
+                        id === "E04"
+                          ? MATERIALS["3A"].color
+                          : id === "E05"
+                            ? MATERIALS.MIXED.color
+                            : id === "E03"
+                              ? "#e9bf75"
+                              : "#5bd7ac";
+                    return (
+                      <button
+                        className={`silo-row ${selected === id ? "selected" : ""}`}
+                        key={id}
+                        onClick={() => selectDevice(id)}
+                        aria-label={`${id} ${EQUIPMENT[id]} ${count}批`}
+                      >
+                        <span>
+                          {id} ·{" "}
+                          {id === "E02"
+                            ? "三色中转"
+                            : id === "E03"
+                              ? "杂瓶中转"
+                              : id === "E04"
+                                ? "3A 成品"
+                                : "杂色 PET 成品"}
+                        </span>
+                        <strong>{count} %</strong>
+                        <span className="stock-track">
+                          <i
                             style={{
-                              left: `${(state.settings.threshold / CAPACITY) * 100}%`,
+                              width: `${(count / CAPACITY) * 100}%`,
+                              background: color,
                             }}
                           />
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
+                          {(id === "E04" || id === "E05") && (
+                            <b
+                              style={{
+                                left: `${(state.settings.threshold / CAPACITY) * 100}%`,
+                              }}
+                            />
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </section>
-              <details className="small-stock-panel">
-                <summary>独立小仓位 </summary>
+              <details className="small-stock-panel panel-frame">
+                <summary>
+                  <span className="panel-title-mark">《</span>
+                  独立小仓位
+                </summary>
                 <div>
                   {SMALL_GRADES.map((grade) => (
                     <p key={grade}>
@@ -363,37 +499,42 @@ export default function ActualApp() {
                 </div>
                 <small>每 4 批申请人工转运，共用同一打包资源。</small>
               </details>
-              <section className="baler-panel" aria-label="共用打包资源">
-                <div className="section-heading">
-                  <span>打包机状态</span>
+              <section className="baler-panel panel-frame" aria-label="共用打包资源">
+                <div className="panel-title">
+                  <span className="panel-title-mark">《</span>
+                  <h2>打包机状态</h2>
+                  <small>BALER</small>
                 </div>
-                <p className="gate-status">
-                  仓门互锁 <span>{gate}</span>
-                </p>
-                <div className="packing-stages">
-                  {["供料", "压缩", "出包"].map((name, index) => (
-                    <span
-                      key={name}
-                      className={
-                        job &&
-                        (job.phase === "EJECTING"
-                          ? index === 2
-                          : job.phase === "COMPRESSING"
-                            ? index === 1
-                            : index === 0)
-                          ? "active"
-                          : ""
-                      }
-                    >
-                      {name}
-                    </span>
-                  ))}
+                <div className="panel-body">
+                  <p className="gate-status">
+                    仓门互锁 <span>{gate}</span>
+                  </p>
+                  <div className="packing-stages">
+                    {["供料", "压缩", "出包"].map((name, index) => (
+                      <span
+                        key={name}
+                        className={
+                          job &&
+                          (job.phase === "EJECTING"
+                            ? index === 2
+                            : job.phase === "COMPRESSING"
+                              ? index === 1
+                              : index === 0)
+                            ? "active"
+                            : ""
+                        }
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </section>
 
-              <details className="actual-parameters">
+              <details className="actual-parameters panel-frame">
                 <summary>
-                  模拟参数 <span>可调整</span>
+                  <span className="panel-title-mark">《</span>
+                  模拟参数 <span className="summary-note">可调整</span>
                 </summary>
                 {PARAMETERS.map((parameter) => (
                   <label key={parameter.id}>
@@ -425,17 +566,35 @@ export default function ActualApp() {
                 ))}
                 <small>调整按当前时刻记录，拖回历史可重放。</small>
               </details>
-              <div className="actual-events" aria-label="最近生产事件">
-                {state.events
-                  .slice(-3)
-                  .reverse()
-                  .map((event, index) => (
-                    <p key={`${event.time}-${index}`}>
-                      <time>{formatTime(event.time)}</time>
-                      {event.text}
+              <section
+                className="actual-events panel-frame"
+                aria-label="最近生产事件"
+              >
+                <div className="panel-title">
+                  <span className="panel-title-mark">《</span>
+                  <h2>AI 事件</h2>
+                  <small>
+                    <Radar size={11} /> LIVE EVENTS
+                  </small>
+                </div>
+                <div className="panel-body">
+                  {state.events.length === 0 && (
+                    <p className="event-empty">
+                      <time>{formatTime(state.time)}</time>
+                      等待产线事件…
                     </p>
-                  ))}
-              </div>
+                  )}
+                  {state.events
+                    .slice(-4)
+                    .reverse()
+                    .map((event, index) => (
+                      <p key={`${event.time}-${index}`}>
+                        <time>{formatTime(event.time)}</time>
+                        {event.text}
+                      </p>
+                    ))}
+                </div>
+              </section>
             </>
           )}
         </aside>
@@ -512,7 +671,50 @@ export default function ActualApp() {
             ))}
           </div>
         </div>
+        <section className="actual-metrics" aria-label="产线模拟统计">
+          <div>
+            <span>累计上料</span>
+            <strong data-testid="received-count">
+              {state.units.length}
+              <small>批</small>
+            </strong>
+          </div>
+          <div>
+            <span>已打包</span>
+            <strong data-testid="baled-count">
+              {baled}
+              <small>批 / {state.bales.length} 包</small>
+            </strong>
+          </div>
+          <div>
+            <span>在制物料</span>
+            <strong>
+              {working}
+              <small>批</small>
+            </strong>
+          </div>
+        </section>
       </footer>
     </div>
   );
 }
+
+const DEVICE_NAMES: Record<EquipmentId, string> = {
+  E02: "三色中转仓",
+  E03: "杂瓶中转仓",
+  E04: "3A 成品仓",
+  E05: "杂色 PET 仓",
+  E06: "上料爬坡机",
+  E07: "杂瓶爬坡机",
+  E08: "出包输送带",
+  E09: "脱标爬坡机",
+  E10: "链板提升机",
+  E11: "螺旋上料机",
+  E12: "脱标机",
+  E13: "自动打包机",
+  E14: "人工分拣平台",
+  E15: "并联机械手",
+  E16: "机械手输送带",
+  E17: "AI 分选机",
+  E18: "二次分选机",
+};

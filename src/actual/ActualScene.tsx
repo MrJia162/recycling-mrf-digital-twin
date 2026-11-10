@@ -1,4 +1,4 @@
-import {
+﻿import {
   Component,
   useEffect,
   useMemo,
@@ -14,7 +14,12 @@ import { Html, Line, OrbitControls } from "@react-three/drei";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import * as THREE from "three";
-import { ActualSimulation, openGate } from "./engine";
+import {
+  ActualSimulation,
+  deviceStatus,
+  openGate,
+  statusTone,
+} from "./engine";
 import {
   CAPACITY,
   EQUIPMENT,
@@ -52,7 +57,34 @@ function routeColor(id: string) {
       ? MATERIALS.MIXED.color
       : id.includes("Misc") || id.includes("manual")
         ? "#e9bf75"
-        : "#5adcb0";
+        : "#4bd6ff";
+}
+const SCENE_BLUE = "#04101f";
+const DEVICE_BLUE = new THREE.Color("#3f7fa6");
+function deviceTone(source: THREE.Color): THREE.Color {
+  const color = source.clone().convertLinearToSRGB();
+  const hsl = { h: 0, s: 0, l: 0 };
+  color.getHSL(hsl);
+  if (hsl.s < 0.16) {
+    const light = THREE.MathUtils.clamp(hsl.l * 0.72 + 0.12, 0.1, 0.82);
+    color.setHSL(0.56, 0.24, light);
+  } else if (hsl.h >= 0.07 && hsl.h <= 0.17) {
+    color.setHSL(
+      0.1,
+      0.6,
+      THREE.MathUtils.clamp(hsl.l * 0.9 + 0.16, 0.3, 0.62),
+    );
+  } else if (hsl.h <= 0.05 || hsl.h >= 0.94) {
+    color.setHSL(0.015, 0.62, 0.48);
+  } else {
+    color.setHSL(
+      0.54 + (hsl.l > 0.55 ? 0.02 : 0),
+      0.52,
+      THREE.MathUtils.clamp(hsl.l * 0.55 + 0.22, 0.22, 0.68),
+    );
+  }
+  color.convertSRGBToLinear();
+  return color.lerp(DEVICE_BLUE, 0.12);
 }
 const FLOW_SPEED = 2.4;
 function FlowPaths() {
@@ -193,6 +225,20 @@ const MODEL_OFFSET: Point = [
   0,
   cad.E01.center[2] - (LINE_CENTER.minZ + LINE_CENTER.maxZ) / 2,
 ];
+const SHELL_SCALE = 1.5;
+const SHELL_FLOOR_Y = 1.2;
+const SHELL_PIVOT: Point = [
+  cad.E01.center[0],
+  SHELL_FLOOR_Y,
+  cad.E01.center[2],
+];
+const SHELL_POSITION: Point = [
+  SHELL_PIVOT[0] * (1 - SHELL_SCALE),
+  SHELL_PIVOT[1] * (1 - SHELL_SCALE) + SHELL_Y_OFFSET,
+  SHELL_PIVOT[2] * (1 - SHELL_SCALE),
+];
+const SHELL_WIDTH = (cad.E01.bounds[3] - cad.E01.bounds[0]) * SHELL_SCALE;
+const SHELL_DEPTH = (cad.E01.bounds[5] - cad.E01.bounds[2]) * SHELL_SCALE;
 const PARTITION_IDS = ["E19", "E20", "E21", "E22", "E23", "E24"];
 const STORAGE_START_Z = cad.E01.bounds[5] - 0.5;
 const STORAGE_BAY_WIDTH = 4;
@@ -514,7 +560,7 @@ function WeighingStation() {
       <mesh position={[0, 0.09, 0]}>
         <boxGeometry args={[1.18, 0.18, 1.18]} />
         <meshStandardMaterial
-          color="#2f3a40"
+          color="#24455c"
           metalness={0.5}
           roughness={0.45}
         />
@@ -528,7 +574,7 @@ function WeighingStation() {
         <mesh key={`${x}-${z}`} position={[x, 0.025, z]}>
           <cylinderGeometry args={[0.07, 0.09, 0.05, 12]} />
           <meshStandardMaterial
-            color="#182126"
+            color="#0d2030"
             metalness={0.6}
             roughness={0.35}
           />
@@ -537,7 +583,7 @@ function WeighingStation() {
       <mesh position={[0, 0.24, 0]}>
         <boxGeometry args={[1.02, 0.08, 1.02]} />
         <meshStandardMaterial
-          color="#8c9aa1"
+          color="#9fc3d6"
           metalness={0.6}
           roughness={0.32}
         />
@@ -545,7 +591,7 @@ function WeighingStation() {
       <mesh position={[0, 0.29, 0]}>
         <boxGeometry args={[0.86, 0.02, 0.86]} />
         <meshStandardMaterial
-          color="#c9a227"
+          color="#d9a93c"
           metalness={0.35}
           roughness={0.55}
         />
@@ -553,7 +599,7 @@ function WeighingStation() {
       <mesh position={[-0.47, 0.58, -0.39]}>
         <cylinderGeometry args={[0.035, 0.045, 0.75, 8]} />
         <meshStandardMaterial
-          color="#39464d"
+          color="#33607a"
           metalness={0.55}
           roughness={0.4}
         />
@@ -562,7 +608,7 @@ function WeighingStation() {
         <mesh>
           <boxGeometry args={[0.36, 0.24, 0.11]} />
           <meshStandardMaterial
-            color="#1a252a"
+            color="#0c2233"
             metalness={0.3}
             roughness={0.5}
           />
@@ -570,8 +616,8 @@ function WeighingStation() {
         <mesh position={[0, 0.02, 0.058]}>
           <planeGeometry args={[0.27, 0.14]} />
           <meshStandardMaterial
-            color="#6fe0b5"
-            emissive="#37b98c"
+            color="#6fe6ff"
+            emissive="#2fa9d8"
             emissiveIntensity={0.7}
             roughness={0.3}
           />
@@ -897,8 +943,25 @@ function Plant({
               ? child.material
               : [child.material];
             const copies = originals.map((original) => {
-              if (!materials.has(original.uuid))
-                materials.set(original.uuid, original.clone());
+              if (!materials.has(original.uuid)) {
+                const copy = original.clone();
+                if (copy instanceof THREE.MeshStandardMaterial) {
+                  copy.color.copy(deviceTone(copy.color));
+                  copy.metalness = THREE.MathUtils.clamp(
+                    copy.metalness * 0.6 + 0.32,
+                    0.32,
+                    0.75,
+                  );
+                  copy.roughness = THREE.MathUtils.clamp(
+                    copy.roughness * 0.85 + 0.08,
+                    0.34,
+                    0.85,
+                  );
+                  copy.emissive.set("#07263d");
+                  copy.emissiveIntensity = 0.08;
+                }
+                materials.set(original.uuid, copy);
+              }
               return materials.get(original.uuid)!;
             });
             child.material = Array.isArray(child.material) ? copies : copies[0];
@@ -938,7 +1001,10 @@ function Plant({
     if (!model) return;
     for (const [id, root] of roots.current) {
       root.visible = id === "E01" ? shell : id !== REPLACED_ID;
-      if (PARTITION_IDS.includes(id))
+      if (id === "E01") {
+        root.scale.setScalar(SHELL_SCALE);
+        root.position.set(...SHELL_POSITION);
+      } else if (PARTITION_IDS.includes(id))
         root.position.set(0, 0, PARTITION_OFFSET_Z[id]);
       else {
         const offset = UNMOVED_IDS.has(id)
@@ -977,8 +1043,8 @@ function Plant({
           material.opacity = opacity;
           material.depthWrite = !material.transparent;
           if (material instanceof THREE.MeshStandardMaterial) {
-            material.emissive.set(isSelected ? "#1a6354" : "#000000");
-            material.emissiveIntensity = 0.32;
+            material.emissive.set(isSelected ? "#0e5f7a" : "#07263d");
+            material.emissiveIntensity = isSelected ? 0.42 : 0.08;
             material.roughness = Math.max(0.45, material.roughness);
           }
         }
@@ -1100,8 +1166,8 @@ function SiloContents({ simulation }: Pick<Props, "simulation">) {
               : id === "E05"
                 ? MATERIALS.MIXED.color
                 : id === "E03"
-                  ? "#e7bd73"
-                  : "#6cdcb2";
+                  ? "#e9bf75"
+                  : "#4bd6ff";
         return (
           <group key={id}>
             <mesh
@@ -1199,7 +1265,7 @@ function DeltaRobot({ simulation }: Pick<Props, "simulation">) {
         >
           <cylinderGeometry args={[0.035, 0.035, 1, 6]} />
           <meshStandardMaterial
-            color="#62d9b2"
+            color="#59d7ff"
             metalness={0.55}
             roughness={0.3}
           />
@@ -1207,7 +1273,7 @@ function DeltaRobot({ simulation }: Pick<Props, "simulation">) {
       ))}
       <mesh ref={gripper} renderOrder={4}>
         <boxGeometry args={[0.3, 0.1, 0.28]} />
-        <meshStandardMaterial color="#163c38" />
+        <meshStandardMaterial color="#0b2b3d" />
       </mesh>
     </group>
   );
@@ -1234,12 +1300,12 @@ function Worker({
       </mesh>
       <mesh position={[0, 0.98, 0]}>
         <boxGeometry args={[0.4, 0.58, 0.26]} />
-        <meshStandardMaterial color="#dfaa53" />
+        <meshStandardMaterial color="#d9a94e" />
       </mesh>
       {[-0.12, 0.12].map((x) => (
         <mesh key={x} position={[x, 0.35, 0]}>
           <boxGeometry args={[0.14, 0.7, 0.16]} />
-          <meshStandardMaterial color="#3b5262" />
+          <meshStandardMaterial color="#26485e" />
         </mesh>
       ))}
       <group ref={arm} position={[0.24, 1.15, 0]}>
@@ -1462,7 +1528,7 @@ function SmallStocks({
           <group key={grade} position={p} scale={manual ? 1.2 : 1}>
             <mesh position={[0, 0.28, 0]}>
               <boxGeometry args={[0.66, 0.56, 0.6]} />
-              <meshStandardMaterial color="#53727e" wireframe />
+              <meshStandardMaterial color="#3f708c" wireframe />
             </mesh>
             <mesh
               ref={(node) => {
@@ -1557,7 +1623,7 @@ function Packing({ simulation }: Pick<Props, "simulation">) {
     <>
       <mesh ref={platen} position={[0.8, 2.1, 1.84]} renderOrder={3}>
         <boxGeometry args={[0.2, 1.2, 1.2]} />
-        <meshStandardMaterial color="#5bdec0" metalness={0.5} />
+        <meshStandardMaterial color="#57d8ff" metalness={0.5} />
       </mesh>
       <instancedMesh
         ref={bales}
@@ -1571,11 +1637,11 @@ function Packing({ simulation }: Pick<Props, "simulation">) {
       <group ref={cart}>
         <mesh position={[0, 0.25, 0]}>
           <boxGeometry args={[0.9, 0.15, 1.2]} />
-          <meshStandardMaterial color="#334e5d" />
+          <meshStandardMaterial color="#234a63" />
         </mesh>
         <mesh position={[0, 0.65, 0]}>
           <boxGeometry args={[0.75, 0.7, 0.9]} />
-          <meshStandardMaterial color="#dcb269" />
+          <meshStandardMaterial color="#d9a94e" />
         </mesh>
         <Worker position={[-0.7, 0, 0]} simulation={simulation} />
       </group>
@@ -1625,17 +1691,17 @@ function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
         renderOrder={2}
       >
         <boxGeometry args={[0.58, 0.035, 0.08]} />
-        <meshStandardMaterial color="#4b9f8a" transparent opacity={0.65} />
+        <meshStandardMaterial color="#2e84a8" transparent opacity={0.65} />
       </instancedMesh>
       <group position={[-8.05, 2.85, -3.3]}>
         <group ref={rotor}>
           <mesh>
             <torusGeometry args={[0.36, 0.025, 6, 20]} />
-            <meshStandardMaterial color="#62dfb5" />
+            <meshStandardMaterial color="#5cd8ff" />
           </mesh>
           <mesh>
             <boxGeometry args={[0.68, 0.035, 0.035]} />
-            <meshStandardMaterial color="#62dfb5" />
+            <meshStandardMaterial color="#5cd8ff" />
           </mesh>
         </group>
       </group>
@@ -1643,11 +1709,11 @@ function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
         <group ref={screw}>
           <mesh>
             <torusGeometry args={[0.2, 0.025, 6, 16]} />
-            <meshStandardMaterial color="#62dfb5" />
+            <meshStandardMaterial color="#5cd8ff" />
           </mesh>
           <mesh>
             <boxGeometry args={[0.36, 0.025, 0.025]} />
-            <meshStandardMaterial color="#62dfb5" />
+            <meshStandardMaterial color="#5cd8ff" />
           </mesh>
         </group>
       </group>
@@ -1914,6 +1980,50 @@ function DevicePins({ selected, onSelect }: Pick<Props, "selected" | "onSelect">
   );
 }
 
+const FLOAT_IDS: EquipmentId[] = ["E06", "E17", "E14", "E13", "E18"];
+function DeviceStatusFloats({
+  simulation,
+  hidden,
+}: Pick<Props, "simulation"> & { hidden: boolean }) {
+  const labels = useRef(new Map<EquipmentId, HTMLSpanElement>());
+  useFrame(() => {
+    for (const id of FLOAT_IDS) {
+      const element = labels.current.get(id);
+      if (!element) continue;
+      const status = deviceStatus(simulation.current, id);
+      if (element.textContent !== status) element.textContent = status;
+      element.dataset.tone = statusTone(status);
+      element.hidden = hidden;
+    }
+  });
+  return (
+    <>
+      {FLOAT_IDS.map((id) => {
+        const [x, , z] = center(id);
+        return (
+          <Html
+            key={`float-${id}`}
+            position={[x, cad[id].bounds[4] + 1.05, z]}
+            center
+            zIndexRange={[11, 0]}
+          >
+            <span
+              className="device-float"
+              data-tone="run"
+              ref={(node) => {
+                if (node) labels.current.set(id, node);
+                else labels.current.delete(id);
+              }}
+            >
+              运行中
+            </span>
+          </Html>
+        );
+      })}
+    </>
+  );
+}
+
 export default function ActualScene(props: Props) {
   const [loadState, setLoadState] = useState("正在加载真实 CAD…");
   const elements = useRef(new Map<string, HTMLElement>());
@@ -1930,17 +2040,25 @@ export default function ActualScene(props: Props) {
           </p>
         }
       >
-        <color attach="background" args={["#0b141a"]} />
-        <hemisphereLight args={["#ffffff", "#758995", 2.2]} />
+        <color attach="background" args={[SCENE_BLUE]} />
+        <fog attach="fog" args={[SCENE_BLUE, 74, 172]} />
+        <hemisphereLight args={["#d3efff", "#081726", 2.1]} />
         <directionalLight
           position={[18, 30, 12]}
-          intensity={2.7}
-          color="#fff3df"
+          intensity={2.9}
+          color="#eaf7ff"
         />
         <directionalLight
-          position={[-20, 12, -20]}
-          intensity={0.7}
-          color="#c4e3ff"
+          position={[-20, 14, -18]}
+          intensity={1.15}
+          color="#4fb9ff"
+        />
+        <pointLight
+          position={[-2, 13, 0]}
+          intensity={110}
+          distance={48}
+          decay={2}
+          color="#38c6ff"
         />
         <SceneBoundary
           onError={() => setLoadState("三维画面暂不可用，仿真与面板仍可操作。")}
@@ -1950,14 +2068,25 @@ export default function ActualScene(props: Props) {
             rotation={[-Math.PI / 2, 0, 0]}
             position={[cad.E01.center[0], 1.16, cad.E01.center[2]]}
           >
-            <planeGeometry
-              args={[
-                cad.E01.bounds[3] - cad.E01.bounds[0],
-                cad.E01.bounds[5] - cad.E01.bounds[2],
-              ]}
+            <planeGeometry args={[SHELL_WIDTH, SHELL_DEPTH]} />
+            <meshStandardMaterial
+              color="#0e2a40"
+              roughness={0.84}
+              metalness={0.32}
             />
-            <meshStandardMaterial color="#005c0c" roughness={1} metalness={0} />
           </mesh>
+          <gridHelper
+            args={[
+              Math.max(SHELL_WIDTH, SHELL_DEPTH),
+              Math.round(Math.max(SHELL_WIDTH, SHELL_DEPTH) / 2),
+              "#2a7ba3",
+              "#123a52",
+            ]}
+            position={[cad.E01.center[0], 1.17, cad.E01.center[2]]}
+            material-transparent
+            material-opacity={0.22}
+            material-depthWrite={false}
+          />
           <StorageZones />
           <PostBalerStacking simulation={props.simulation} />
           {props.axes && <CoordinateFrame />}
@@ -1977,6 +2106,10 @@ export default function ActualScene(props: Props) {
             <SmallStocks {...props} />
             <Packing simulation={props.simulation} />
             <EquipmentMotion simulation={props.simulation} />
+            <DeviceStatusFloats
+              simulation={props.simulation}
+              hidden={props.view === "focus"}
+            />
             {props.view === "focus" && (
               <DevicePins
                 selected={props.selected}
@@ -2014,8 +2147,8 @@ export default function ActualScene(props: Props) {
                     : id === "E05"
                       ? MATERIALS.MIXED.color
                       : id === "E03"
-                        ? "#e7bd73"
-                        : "#6cdcb2",
+                        ? "#e9bf75"
+                        : "#4bd6ff",
               }}
             />
             {id} ·{" "}

@@ -408,6 +408,14 @@ export function openGate(state: ActualState): 'E04' | 'E05' | null {
   return state.power[job.source] && state.power.E08 && state.power.E10 && state.power.E13 ? job.source : null;
 }
 
+export type StatusTone = 'run' | 'warn' | 'alarm';
+
+export function statusTone(status: string): StatusTone {
+  if (status.includes('停用')) return 'alarm';
+  if (status.includes('等待') || status.includes('积料') || status.includes('待机')) return 'warn';
+  return 'run';
+}
+
 export function deviceStatus(state: ActualState, id: EquipmentId): string {
   if (!state.power[id]) return '已停用';
   if (id === 'E15' && state.armReturn) return '复位中';
