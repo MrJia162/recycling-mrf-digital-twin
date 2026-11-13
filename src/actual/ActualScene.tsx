@@ -9,13 +9,13 @@
   type ReactNode,
   type RefObject,
 } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import * as THREE from "three";
-import { concreteFloor, corrugatedPanel } from "../scene/textures";
+import { corrugatedPanel, marbleFloor } from "../scene/textures";
 import { ActualSimulation, openGate } from "./engine";
 import {
   CAPACITY,
@@ -39,6 +39,15 @@ import {
   extractBalerDoor,
   removeEmbeddedPosts,
 } from "./cad";
+import {
+  DEFAULT_COLORS,
+  DEFAULT_PART_COLORS,
+  partColorKey,
+  type ColorOverrides,
+  type ColorTarget,
+  type PartColors,
+  type PartPickInfo,
+} from "./palette";
 
 export type CameraView = "overview" | "top" | "focus";
 interface Props {
@@ -48,6 +57,11 @@ interface Props {
   paths: boolean;
   shell: boolean;
   view: CameraView;
+  colors: ColorOverrides;
+  partColors: PartColors;
+  pickPart: boolean;
+  pickedPart: PartPickInfo | null;
+  onPickPart: (pick: PartPickInfo) => void;
 }
 function routeColor(id: string) {
   return id === "air3A" || id === "discharge3A"
@@ -58,15 +72,15 @@ function routeColor(id: string) {
         ? "#e9bf75"
         : "#4bd6ff";
 }
-const SCENE_BLUE = "#0a1014";
-const DEVICE_STEEL = new THREE.Color("#8d9091");
+const SCENE_BLUE = "#071726";
+const DEVICE_STEEL = new THREE.Color("#8d969b");
 function deviceTone(source: THREE.Color): THREE.Color {
   const color = source.clone().convertLinearToSRGB();
   const hsl = { h: 0, s: 0, l: 0 };
   color.getHSL(hsl);
   if (hsl.s < 0.16) {
     const light = THREE.MathUtils.clamp(hsl.l * 0.72 + 0.2, 0.2, 0.86);
-    color.setHSL(0.09, 0.06, light);
+    color.setHSL(0.58, 0.07, light);
   } else if (hsl.h >= 0.07 && hsl.h <= 0.17) {
     color.setHSL(
       0.1,
@@ -252,6 +266,83 @@ const SHELL_WORLD = {
 } as const;
 const SHELL_CENTER_X = (SHELL_WORLD.x0 + SHELL_WORLD.x1) / 2;
 const SHELL_CENTER_Z = (SHELL_WORLD.z0 + SHELL_WORLD.z1) / 2;
+const SILO_IDS = new Set(["E02", "E03", "E04", "E05"]);
+const CONVEYOR_IDS = new Set([
+  "E06",
+  "E07",
+  "E08",
+  "E09",
+  "E10",
+  "E11",
+  "E16",
+]);
+const CONVEYOR_BELT_MATERIALS: Record<string, string> = {
+  E06: "mat_15",
+  E07: "mat_17",
+  E08: "mat_17",
+  E09: "mat_15",
+  E16: "mat_74",
+};
+const PIPE_IDS = new Set(
+  Object.entries(cad)
+    .filter(([, entry]) => entry.name.includes("管道"))
+    .map(([id]) => id),
+);
+const SORTER_IDS = new Set(["E17", "E18"]);
+const PARTITION_TARGET_IDS = new Set(["E19", "E20", "E21", "E22", "E23", "E24"]);
+const CONVEYOR_TARGET_IDS = new Set([
+  "E06",
+  "E07",
+  "E08",
+  "E09",
+  "E10",
+  "E16",
+  "E36",
+  "E37",
+  "E38",
+  "E39",
+  "E40",
+  "E41",
+  "E42",
+]);
+function colorTarget(
+  deviceId: string,
+  materialName: string,
+  beltMaterial?: string,
+): ColorTarget {
+  if (deviceId === "E01") return "floor";
+  if (SILO_IDS.has(deviceId)) return "silo";
+  if (PIPE_IDS.has(deviceId)) return "pipe";
+  if (deviceId === "E13") return "baler";
+  if (deviceId === "E11") return "screw";
+  if (deviceId === "E12") return "delabel";
+  if (deviceId === "E14") return "platform";
+  if (deviceId === "E15") return "robot";
+  if (SORTER_IDS.has(deviceId)) return "sorter";
+  if (PARTITION_TARGET_IDS.has(deviceId)) return "partition";
+  if (deviceId === "E25") return "weighing";
+  if (beltMaterial && materialName === beltMaterial) return "belt";
+  if (CONVEYOR_TARGET_IDS.has(deviceId)) return "conveyor";
+  return "auxiliary";
+}
+function tintColor(base: THREE.Color, value: string): THREE.Color {
+  const source = base.clone().convertLinearToSRGB();
+  const target = new THREE.Color(value).convertLinearToSRGB();
+  const sourceHsl = { h: 0, s: 0, l: 0 };
+  const targetHsl = { h: 0, s: 0, l: 0 };
+  source.getHSL(sourceHsl);
+  target.getHSL(targetHsl);
+  source.setHSL(
+    targetHsl.h,
+    targetHsl.s,
+    THREE.MathUtils.clamp(
+      targetHsl.l * (0.62 + sourceHsl.l * 0.8),
+      0.02,
+      0.98,
+    ),
+  );
+  return source.convertSRGBToLinear();
+}
 const EMBEDDED_POSTS = [
   { x: 0.06, z: -13.61, half: 0.55 },
   { x: 0.06, z: -4.39, half: 0.55 },
@@ -311,7 +402,7 @@ function StorageZones() {
                 [STORAGE_MIN_X, STORAGE_LINE_Y, front],
               ]}
               color="#f7c948"
-              lineWidth={2}
+              lineWidth={3}
               dashed
               dashSize={0.5}
               gapSize={0.35}
@@ -443,9 +534,9 @@ function EquipmentZones() {
           key={index}
           points={points}
           color="#f7c948"
-          lineWidth={2}
+          lineWidth={3}
           transparent
-          opacity={0.9}
+          opacity={0.92}
           depthWrite={false}
         />
       ))}
@@ -818,12 +909,12 @@ function SceneEnvironment() {
   return null;
 }
 
-function HallFloor() {
+function HallFloor({ color }: { color: string }) {
   const map = useMemo(
     () =>
-      concreteFloor(
-        Math.max(1, Math.round(SHELL_WIDTH / 4)),
-        Math.max(1, Math.round(SHELL_DEPTH / 4)),
+      marbleFloor(
+        Math.max(1, Math.round(SHELL_WIDTH / 6.5)),
+        Math.max(1, Math.round(SHELL_DEPTH / 6.5)),
       ),
     [],
   );
@@ -838,18 +929,28 @@ function HallFloor() {
       receiveShadow
     >
       <planeGeometry args={[SHELL_WIDTH, SHELL_DEPTH]} />
-      <meshStandardMaterial
+      <meshPhysicalMaterial
         map={map ?? undefined}
-        color="#c9c7c1"
-        roughness={0.34}
-        metalness={0.24}
+        color={color}
+        roughness={0.22}
+        metalness={0.05}
+        clearcoat={0.45}
+        clearcoatRoughness={0.18}
+        envMapIntensity={0.9}
       />
     </mesh>
   );
 }
 
-const HALL_STEEL = "#3e4347";
-function HallShell() {
+const HALL_STEEL = "#5a6367";
+const HALL_TRUSS = "#b9c1c4";
+function HallShell({
+  wallColor,
+  steelColor,
+}: {
+  wallColor: string;
+  steelColor?: string;
+}) {
   const width = SHELL_WORLD.x1 - SHELL_WORLD.x0;
   const depth = SHELL_WORLD.z1 - SHELL_WORLD.z0;
   const height = SHELL_WORLD.top - SHELL_WORLD.floor;
@@ -908,7 +1009,7 @@ function HallShell() {
         <planeGeometry args={[width, height]} />
         <meshStandardMaterial
           map={longWallMap ?? undefined}
-          color="#dedbd3"
+          color={wallColor}
           roughness={0.7}
           metalness={0.14}
         />
@@ -921,7 +1022,7 @@ function HallShell() {
         <planeGeometry args={[width, height]} />
         <meshStandardMaterial
           map={longWallMap ?? undefined}
-          color="#dedbd3"
+          color={wallColor}
           roughness={0.7}
           metalness={0.14}
         />
@@ -934,7 +1035,7 @@ function HallShell() {
         <planeGeometry args={[depth, height]} />
         <meshStandardMaterial
           map={shortWallMap ?? undefined}
-          color="#dedbd3"
+          color={wallColor}
           roughness={0.7}
           metalness={0.14}
         />
@@ -947,7 +1048,7 @@ function HallShell() {
         <planeGeometry args={[depth, height]} />
         <meshStandardMaterial
           map={shortWallMap ?? undefined}
-          color="#dedbd3"
+          color={wallColor}
           roughness={0.7}
           metalness={0.14}
         />
@@ -963,9 +1064,9 @@ function HallShell() {
           >
             <boxGeometry args={[width, 0.16, 0.16]} />
             <meshStandardMaterial
-              color={HALL_STEEL}
-              roughness={0.5}
-              metalness={0.55}
+              color={steelColor ?? HALL_STEEL}
+              roughness={0.55}
+              metalness={0.35}
             />
           </mesh>
           <mesh
@@ -977,9 +1078,9 @@ function HallShell() {
           >
             <boxGeometry args={[width, 0.16, 0.16]} />
             <meshStandardMaterial
-              color={HALL_STEEL}
-              roughness={0.5}
-              metalness={0.55}
+              color={steelColor ?? HALL_STEEL}
+              roughness={0.55}
+              metalness={0.35}
             />
           </mesh>
           <mesh
@@ -991,9 +1092,9 @@ function HallShell() {
           >
             <boxGeometry args={[0.16, 0.16, depth]} />
             <meshStandardMaterial
-              color={HALL_STEEL}
-              roughness={0.5}
-              metalness={0.55}
+              color={steelColor ?? HALL_STEEL}
+              roughness={0.55}
+              metalness={0.35}
             />
           </mesh>
           <mesh
@@ -1005,9 +1106,9 @@ function HallShell() {
           >
             <boxGeometry args={[0.16, 0.16, depth]} />
             <meshStandardMaterial
-              color={HALL_STEEL}
-              roughness={0.5}
-              metalness={0.55}
+              color={steelColor ?? HALL_STEEL}
+              roughness={0.55}
+              metalness={0.35}
             />
           </mesh>
         </group>
@@ -1019,9 +1120,9 @@ function HallShell() {
         >
           <boxGeometry args={[width - 0.8, 0.32, 0.22]} />
           <meshStandardMaterial
-            color={HALL_STEEL}
-            roughness={0.5}
-            metalness={0.55}
+            color={steelColor ?? HALL_TRUSS}
+            roughness={0.55}
+            metalness={0.35}
           />
         </mesh>
       ))}
@@ -1032,9 +1133,9 @@ function HallShell() {
         >
           <boxGeometry args={[0.16, 0.22, depth - 0.8]} />
           <meshStandardMaterial
-            color={HALL_STEEL}
-            roughness={0.5}
-            metalness={0.55}
+            color={steelColor ?? HALL_TRUSS}
+            roughness={0.55}
+            metalness={0.35}
           />
         </mesh>
       ))}
@@ -1075,10 +1176,24 @@ function Plant({
   paths,
   shell,
   simulation,
+  colors,
+  partColors,
+  pickedPart,
+  pickPart,
+  onPickPart,
   onLoad,
 }: Pick<
   Props,
-  "selected" | "view" | "paths" | "shell" | "simulation"
+  | "selected"
+  | "view"
+  | "paths"
+  | "shell"
+  | "simulation"
+  | "colors"
+  | "partColors"
+  | "pickedPart"
+  | "pickPart"
+  | "onPickPart"
 > & {
   onLoad: (text: string) => void;
 }) {
@@ -1095,6 +1210,52 @@ function Plant({
       delta,
     );
   });
+  useEffect(() => {
+    if (!model) return;
+    const seen = new Set<THREE.Material>();
+    const pickedKey = pickedPart?.key;
+    model.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const list = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      for (const material of list) {
+        if (seen.has(material)) continue;
+        seen.add(material);
+        if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+        const target = material.userData.paintTarget as ColorTarget | undefined;
+        const base = material.userData.baseColor as THREE.Color | undefined;
+        if (!target || !base) continue;
+        const deviceId = material.userData.paintDevice as string | undefined;
+        const materialName = material.userData.paintMaterial as
+          | string
+          | undefined;
+        const key =
+          deviceId && materialName
+            ? partColorKey(deviceId, materialName)
+            : undefined;
+        const part = key
+          ? partColors[key] ?? DEFAULT_PART_COLORS[key]
+          : undefined;
+        const override = colors[target];
+        if (part) material.color.set(part);
+        else if (override) material.color.copy(tintColor(base, override));
+        else material.color.copy(base);
+        const baseEmissive = material.userData.baseEmissive as
+          | THREE.Color
+          | undefined;
+        const baseEmissiveIntensity = material.userData
+          .baseEmissiveIntensity as number | undefined;
+        if (key && key === pickedKey) {
+          material.emissive.set("#2f8fbd");
+          material.emissiveIntensity = 0.6;
+        } else if (baseEmissive) {
+          material.emissive.copy(baseEmissive);
+          material.emissiveIntensity = baseEmissiveIntensity ?? 0;
+        }
+      }
+    });
+  }, [model, colors, partColors, pickedPart]);
   useEffect(() => {
     let cancelled = false;
     let loaded: THREE.Group | null = null;
@@ -1127,6 +1288,11 @@ function Plant({
           if (!/^E\d{2}$/.test(object.name)) return;
           roots.current.set(object.name, object);
           const isShell = object.name === "E01";
+          const isSilo = SILO_IDS.has(object.name);
+          const isConveyor = CONVEYOR_IDS.has(object.name);
+          const beltMaterial = CONVEYOR_BELT_MATERIALS[object.name];
+          const isBaler = object.name === "E13";
+          const isPipe = PIPE_IDS.has(object.name);
           const materials = new Map<string, THREE.MeshStandardMaterial>();
           object.traverse((child) => {
             if (!(child instanceof THREE.Mesh)) return;
@@ -1143,6 +1309,43 @@ function Plant({
                     copy.roughness = 0.78;
                     copy.emissive.set("#141518");
                     copy.emissiveIntensity = 0.05;
+                  } else if (isSilo) {
+                    copy.color.set(DEFAULT_COLORS.silo);
+                    copy.metalness = 0.82;
+                    copy.roughness = 0.32;
+                    copy.emissive.set("#080b0d");
+                    copy.emissiveIntensity = 0.04;
+                    copy.envMapIntensity = 1.2;
+                  } else if (isConveyor) {
+                    if (original.name === beltMaterial) {
+                      copy.color.set(DEFAULT_COLORS.belt);
+                      copy.metalness = 0.3;
+                      copy.roughness = 0.55;
+                      copy.emissive.set("#07170e");
+                      copy.emissiveIntensity = 0.04;
+                      copy.envMapIntensity = 0.8;
+                    } else {
+                      copy.color.set("#40464a");
+                      copy.metalness = 0.55;
+                      copy.roughness = 0.4;
+                      copy.emissive.set("#0a0d0f");
+                      copy.emissiveIntensity = 0.04;
+                      copy.envMapIntensity = 1;
+                    }
+                  } else if (isBaler) {
+                    copy.color.set("#1c3f63");
+                    copy.metalness = 0.5;
+                    copy.roughness = 0.42;
+                    copy.emissive.set("#050f1a");
+                    copy.emissiveIntensity = 0.04;
+                    copy.envMapIntensity = 0.9;
+                  } else if (isPipe) {
+                    copy.color.set("#b9bfc4");
+                    copy.metalness = 0.92;
+                    copy.roughness = 0.24;
+                    copy.emissive.set("#101417");
+                    copy.emissiveIntensity = 0.03;
+                    copy.envMapIntensity = 1.25;
                   } else {
                     copy.color.copy(deviceTone(copy.color));
                     copy.metalness = THREE.MathUtils.clamp(
@@ -1158,6 +1361,17 @@ function Plant({
                     copy.emissive.set("#121a1f");
                     copy.emissiveIntensity = 0.06;
                   }
+                  const target = colorTarget(
+                    object.name,
+                    original.name,
+                    beltMaterial,
+                  );
+                  copy.userData.paintTarget = target;
+                  copy.userData.paintDevice = object.name;
+                  copy.userData.paintMaterial = original.name;
+                  copy.userData.baseColor = copy.color.clone();
+                  copy.userData.baseEmissive = copy.emissive.clone();
+                  copy.userData.baseEmissiveIntensity = copy.emissiveIntensity;
                 }
                 materials.set(original.uuid, copy);
               }
@@ -1256,8 +1470,29 @@ function Plant({
       });
     }
   }, [model, paths, shell, selected, view]);
+  const pick = (event: ThreeEvent<MouseEvent>) => {
+    if (!pickPart) return;
+    event.stopPropagation();
+    if (!(event.object instanceof THREE.Mesh)) return;
+    const material = Array.isArray(event.object.material)
+      ? event.object.material[0]
+      : event.object.material;
+    if (!(material instanceof THREE.MeshStandardMaterial)) return;
+    const deviceId = material.userData.paintDevice as string | undefined;
+    const materialName = material.userData.paintMaterial as string | undefined;
+    const base = material.userData.baseColor as THREE.Color | undefined;
+    if (!deviceId || !materialName || !base) return;
+    onPickPart({
+      key: partColorKey(deviceId, materialName),
+      deviceId,
+      materialName,
+      color: `#${material.color.getHexString()}`,
+    });
+  };
   if (!model) return null;
-  return <primitive object={model} />;
+  return (
+    <primitive object={model} onClick={pickPart ? pick : undefined} />
+  );
 }
 
 function Bottles({ simulation }: Pick<Props, "simulation">) {
@@ -2192,7 +2427,9 @@ export default function ActualScene(props: Props) {
   const elements = useRef(new Map<string, HTMLElement>());
   const cameraReadout = useRef<HTMLDivElement>(null);
   return (
-    <div className="actual-scene">
+    <div
+      className={`actual-scene${props.pickPart ? " picking-part" : ""}`}
+    >
       <Canvas
         camera={{ position: [26.5, 31.5, 33.6], fov: 38, near: 0.1, far: 300 }}
         dpr={[1, 1.5]}
@@ -2228,7 +2465,7 @@ export default function ActualScene(props: Props) {
           onError={() => setLoadState("三维画面暂不可用，仿真与面板仍可操作。")}
         >
           <Plant {...props} onLoad={setLoadState} />
-          <HallFloor />
+          <HallFloor color={props.colors.floor ?? DEFAULT_COLORS.floor} />
           <gridHelper
             args={[
               Math.max(SHELL_WIDTH, SHELL_DEPTH),
@@ -2241,7 +2478,12 @@ export default function ActualScene(props: Props) {
             material-opacity={0.12}
             material-depthWrite={false}
           />
-          {props.shell && <HallShell />}
+          {props.shell && (
+            <HallShell
+              wallColor={props.colors.wall ?? DEFAULT_COLORS.wall}
+              steelColor={props.colors.steel}
+            />
+          )}
           <StorageZones />
           <PostBalerStacking simulation={props.simulation} />
           <group position={MODEL_OFFSET}>

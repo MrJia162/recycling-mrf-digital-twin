@@ -24,6 +24,14 @@ import {
 import ActualScene, { type CameraView } from "./ActualScene";
 import { ActualSimulation, deviceStatus, openGate, statusTone } from "./engine";
 import {
+  COLOR_GROUPS,
+  DEFAULT_COLORS,
+  DEFAULT_PART_COLORS,
+  type ColorOverrides,
+  type PartColors,
+  type PartPickInfo,
+} from "./palette";
+import {
   CAPACITY,
   EQUIPMENT,
   EQUIPMENT_FLOW_IDS,
@@ -121,6 +129,11 @@ export default function ActualApp() {
   const [zoomShot, setZoomShot] = useState<number | null>(null);
   const [paths, setPaths] = useState(false),
     [shell, setShell] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [colors, setColors] = useState<ColorOverrides>({});
+  const [partColors, setPartColors] = useState<PartColors>({});
+  const [pickPart, setPickPart] = useState(false);
+  const [pickedPart, setPickedPart] = useState<PartPickInfo | null>(null);
   const refresh = useCallback(() => tick((value) => value + 1), []);
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
@@ -265,32 +278,6 @@ export default function ActualApp() {
             <h2>设备状态</h2>
             <small>EQUIPMENT STATUS</small>
           </div>
-          <div className="device-list">
-            {EQUIPMENT_FLOW_IDS.map((id) => {
-              const deviceState = deviceStatus(state, id);
-              const deviceTone = statusTone(deviceState);
-              return (
-                <button
-                  key={id}
-                  className={`device-row ${selected === id ? "selected" : ""}`}
-                  onClick={() => selectDevice(id)}
-                  aria-pressed={selected === id}
-                  aria-label={`${id} ${EQUIPMENT[id]} ${deviceState}`}
-                >
-                  <DeviceIcon id={id} />
-                  <span className="device-meta">
-                    <b>{DEVICE_NAMES[id]}</b>
-                    <small>
-                      {id} · {EQUIPMENT[id]}
-                    </small>
-                  </span>
-                  <span className={`device-status ${deviceTone}`}>
-                    {deviceState}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
           <div className="device-summary">
             <div
               className="health-ring"
@@ -319,6 +306,32 @@ export default function ActualApp() {
               </span>
             </div>
           </div>
+          <div className="device-list">
+            {EQUIPMENT_FLOW_IDS.map((id) => {
+              const deviceState = deviceStatus(state, id);
+              const deviceTone = statusTone(deviceState);
+              return (
+                <button
+                  key={id}
+                  className={`device-row ${selected === id ? "selected" : ""}`}
+                  onClick={() => selectDevice(id)}
+                  aria-pressed={selected === id}
+                  aria-label={`${id} ${EQUIPMENT[id]} ${deviceState}`}
+                >
+                  <DeviceIcon id={id} />
+                  <span className="device-meta">
+                    <b>{DEVICE_NAMES[id]}</b>
+                    <small>
+                      {id} · {EQUIPMENT[id]}
+                    </small>
+                  </span>
+                  <span className={`device-status ${deviceTone}`}>
+                    {deviceState}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </aside>
 
         <section className="actual-stage" aria-label="实际产线三维动画">
@@ -329,6 +342,14 @@ export default function ActualApp() {
             paths={paths}
             shell={shell}
             view={view}
+            colors={colors}
+            partColors={partColors}
+            pickPart={pickPart}
+            pickedPart={pickedPart}
+            onPickPart={(pick) => {
+              setPickedPart(pick);
+              setPickPart(false);
+            }}
           />
           <div className="actual-view-tools" aria-label="三维视图控制">
             <div>
@@ -336,7 +357,7 @@ export default function ActualApp() {
                 [
                   ["overview", "全线"],
                   ["top", "俯视"],
-                  ["focus", "聚焦设备"],
+                  // ["focus", "聚焦设备"],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -367,8 +388,172 @@ export default function ActualApp() {
               >
                 厂房
               </button>
+              {/* <button
+                aria-pressed={showPalette}
+                onClick={() => {
+                  if (showPalette) {
+                    setPickPart(false);
+                    setPickedPart(null);
+                  }
+                  setShowPalette((value) => !value);
+                }}
+              >
+                调色
+              </button> */}
             </div>
           </div>
+          {showPalette && (
+            <section
+              className="palette-panel panel-frame"
+              aria-label="材质调色"
+            >
+              <div className="panel-title">
+                <span className="panel-title-mark">《</span>
+                <h2>材质调色</h2>
+                <small>COLOR</small>
+                <button
+                  type="button"
+                  className="palette-close"
+                  aria-label="关闭调色面板"
+                  onClick={() => {
+                    setPickPart(false);
+                    setPickedPart(null);
+                    setShowPalette(false);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="palette-body">
+                <div className={`palette-part ${pickPart ? "picking" : ""}`}>
+                  <div className="palette-part-head">
+                    <span>
+                      <b>部件调色</b>
+                      <small>
+                        {pickPart ? "点击场景中的部件" : "单台设备内的材质槽"}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="palette-pick-part"
+                      aria-pressed={pickPart}
+                      onClick={() => setPickPart((value) => !value)}
+                    >
+                      {pickPart ? "取消拾取" : "拾取部件"}
+                    </button>
+                  </div>
+                  {pickedPart ? (
+                    <div className="palette-part-picked">
+                      <span className="palette-part-meta">
+                        <b>
+                          {pickedPart.deviceId} · {pickedPart.materialName}
+                        </b>
+                        <small>已选材质槽</small>
+                      </span>
+                      <input
+                        type="color"
+                        className="palette-swatch"
+                        value={
+                          partColors[pickedPart.key] ??
+                          DEFAULT_PART_COLORS[pickedPart.key] ??
+                          pickedPart.color
+                        }
+                        aria-label={`${pickedPart.deviceId} ${pickedPart.materialName} 颜色`}
+                        onChange={(event) =>
+                          setPartColors((current) => ({
+                            ...current,
+                            [pickedPart.key]: event.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="palette-undo"
+                        title="恢复部件默认颜色"
+                        aria-label="恢复部件默认颜色"
+                        disabled={partColors[pickedPart.key] === undefined}
+                        onClick={() =>
+                          setPartColors((current) => {
+                            const next = { ...current };
+                            delete next[pickedPart.key];
+                            return next;
+                          })
+                        }
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="palette-part-hint">
+                      开启拾取后，在三维场景中点击部件，可单独调整该材质槽颜色。
+                    </p>
+                  )}
+                </div>
+                {COLOR_GROUPS.map((group) => {
+                  const value = colors[group.key] ?? DEFAULT_COLORS[group.key];
+                  const customized = colors[group.key] !== undefined;
+                  return (
+                    <div className="palette-row" key={group.key}>
+                      <div className="palette-pick">
+                        <input
+                          type="color"
+                          className="palette-swatch"
+                          value={value}
+                          aria-label={`${group.label}颜色`}
+                          onChange={(event) =>
+                            setColors((current) => ({
+                              ...current,
+                              [group.key]: event.target.value,
+                            }))
+                          }
+                        />
+                        <span className="palette-meta">
+                          <b>{group.label}</b>
+                          <small>{group.hint}</small>
+                        </span>
+                      </div>
+                      <code>{value.toUpperCase()}</code>
+                      <button
+                        type="button"
+                        className="palette-undo"
+                        title="恢复默认"
+                        aria-label={`${group.label}恢复默认颜色`}
+                        disabled={!customized}
+                        onClick={() =>
+                          setColors((current) => {
+                            const next = { ...current };
+                            delete next[group.key];
+                            return next;
+                          })
+                        }
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <div className="palette-footer">
+                  <span>点击色块选择颜色</span>
+                  <button
+                    type="button"
+                    disabled={
+                      Object.keys(colors).length === 0 &&
+                      Object.keys(partColors).length === 0
+                    }
+                    onClick={() => {
+                      setColors({});
+                      setPartColors({});
+                      setPickedPart(null);
+                      setPickPart(false);
+                    }}
+                  >
+                    <RotateCcw size={11} />
+                    全部复位
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
           <div className="material-legend">
             {(["3A", "MIXED", "GREEN", "BROWN"] as const).map((grade) => (
               <span key={grade}>

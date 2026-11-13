@@ -107,6 +107,63 @@ export function concreteFloor(repeatX = 10, repeatY = 7): Texture | null {
   });
 }
 
+/** 抛光大理石：浅灰底 + 灰白脉络，适合做高反光地坪。 */
+export function marbleFloor(repeatX = 8, repeatY = 14): Texture | null {
+  return create(1024, 'marble', repeatX, repeatY, (ctx, size) => {
+    const random = rng(20261111);
+    ctx.fillStyle = '#e7e5e0';
+    ctx.fillRect(0, 0, size, size);
+    for (let index = 0; index < 18; index += 1) {
+      const shade = 190 + Math.round(random() * 35);
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+      ctx.fillRect(
+        random() * size,
+        random() * size,
+        size * (0.2 + random() * 0.6),
+        size * (0.1 + random() * 0.35),
+      );
+    }
+    ctx.globalAlpha = 1;
+    for (let vein = 0; vein < 16; vein += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.05, random() * size);
+      let x = -size * 0.05;
+      let y = random() * size;
+      const steps = 5 + Math.floor(random() * 4);
+      for (let step = 0; step < steps; step += 1) {
+        const nextX = x + size * (0.25 + random() * 0.08);
+        const nextY = y + (random() - 0.5) * size * 0.22;
+        ctx.quadraticCurveTo(
+          x + (nextX - x) * 0.5 + (random() - 0.5) * size * 0.12,
+          y + (nextY - y) * 0.5 + (random() - 0.5) * size * 0.12,
+          nextX,
+          nextY,
+        );
+        x = nextX;
+        y = nextY;
+      }
+      ctx.strokeStyle = `rgba(110,114,118,${0.12 + random() * 0.14})`;
+      ctx.lineWidth = size * (0.0018 + random() * 0.004);
+      ctx.stroke();
+    }
+    for (let vein = 0; vein < 10; vein += 1) {
+      ctx.beginPath();
+      ctx.moveTo(random() * size, random() * size);
+      ctx.quadraticCurveTo(
+        random() * size,
+        random() * size,
+        random() * size,
+        random() * size,
+      );
+      ctx.strokeStyle = `rgba(255,255,255,${0.16 + random() * 0.16})`;
+      ctx.lineWidth = size * 0.0022;
+      ctx.stroke();
+    }
+    speckle(ctx, size, random, 2400, 0.05, 50);
+  });
+}
+
 /** 环氧通道：比混凝土地坪细腻，带一点反光斑。 */
 export function epoxyFloor(repeatX = 12, repeatY = 2): Texture | null {
   return create(512, 'epoxy', repeatX, repeatY, (ctx, size) => {
