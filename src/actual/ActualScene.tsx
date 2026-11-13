@@ -368,7 +368,7 @@ const PARTITION_OFFSET_Z = Object.fromEntries(
   }),
 ) as Record<string, number>;
 const STORAGE_ZONES: { grade: Grade; label: string; bay: number }[] = [
-  { grade: "MIXED", label: "染色PET", bay: 1 },
+  { grade: "MIXED", label: "杂色PET", bay: 1 },
   { grade: "SMALL_WHITE", label: "小白", bay: 2 },
   { grade: "BIG_WHITE", label: "大白", bay: 3 },
   { grade: "FLOWER", label: "花乙", bay: 4 },

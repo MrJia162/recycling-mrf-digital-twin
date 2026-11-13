@@ -30,6 +30,18 @@ export interface Bale {
   count: number;
   at: number;
 }
+export type EventKind = 'weighing' | 'feeding' | 'baling' | 'shipping';
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  weighing: '称重',
+  feeding: '上料',
+  baling: '打包',
+  shipping: '出货',
+};
+export interface ActualEvent {
+  time: number;
+  kind: EventKind;
+  text: string;
+}
 export interface Job {
   source: StockId;
   grade: Grade;
@@ -52,7 +64,7 @@ export interface ActualState {
   nextMisc: number;
   settings: typeof DEFAULTS;
   power: Record<EquipmentId, boolean>;
-  events: { time: number; text: string }[];
+  events: ActualEvent[];
   motion: Record<EquipmentId, number>;
   armReturn: { grade: 'GREEN' | 'BROWN'; progress: number } | null;
 }
@@ -84,6 +96,18 @@ const SEQUENCE: Grade[] = [
   '3A',
 ];
 const isPet = (grade: Grade) => ['3A', 'MIXED', 'GREEN', 'BROWN'].includes(grade);
+const UNIT_WEIGHT_KG: Record<Grade, number> = {
+  '3A': 150,
+  MIXED: 150,
+  GREEN: 150,
+  BROWN: 150,
+  BIG_WHITE: 150,
+  SMALL_WHITE: 150,
+  FLOWER: 150,
+  OIL: 200,
+  CAN: 200,
+};
+const weightKg = (grade: Grade, count = 1) => UNIT_WEIGHT_KG[grade] * count;
 
 function empty(): ActualState {
   return {
@@ -105,8 +129,8 @@ function empty(): ActualState {
     armReturn: null,
   };
 }
-function event(state: ActualState, text: string) {
-  state.events.push({ time: state.time, text });
+function event(state: ActualState, kind: EventKind, text: string) {
+  state.events.push({ time: state.time, kind, text });
   if (state.events.length > 50) state.events.shift();
 }
 function enter(unit: Unit, route: RouteId) {
@@ -230,7 +254,11 @@ function dispatchBaler(state: ActualState) {
       state.units[id].stock = null;
     });
   }
-  event(state, `${manual ? '人工转运' : '料仓放料'}：${MATERIALS[state.job.grade].name}，${units.length} 批`);
+  event(
+    state,
+    'feeding',
+    `${manual ? '人工转运' : '料仓放料'}：${MATERIALS[state.job.grade].name}，${units.length} 批 · ${Math.round(weightKg(state.job.grade, units.length))} kg`,
+  );
 }
 function stepJob(state: ActualState) {
   const job = state.job;
@@ -266,12 +294,22 @@ function stepJob(state: ActualState) {
       if (job.units.every((id) => state.units[id].stage === 'press')) {
         job.phase = 'COMPRESSING';
         job.elapsed = 0;
+        event(
+          state,
+          'baling',
+          `${MATERIALS[job.grade].name}，${job.units.length} 批 · ${Math.round(weightKg(job.grade, job.units.length))} kg`,
+        );
       }
       break;
     case 'COMPRESSING':
       if (job.elapsed >= 6) {
         job.phase = 'EJECTING';
         job.elapsed = 0;
+        event(
+          state,
+          'weighing',
+          `${MATERIALS[job.grade].name}，1 包 · ${Math.round(weightKg(job.grade, job.units.length))} kg`,
+        );
       }
       break;
     case 'EJECTING':
@@ -285,7 +323,11 @@ function stepJob(state: ActualState) {
         job.units.forEach((id) => {
           state.units[id].stage = 'baled';
         });
-        event(state, `打包完成：${MATERIALS[job.grade].name}，${job.units.length} 批`);
+        event(
+          state,
+          'shipping',
+          `${MATERIALS[job.grade].name}，第 ${state.bales.length} 包 · ${Math.round(weightKg(job.grade, job.units.length))} kg`,
+        );
         state.job = null;
       }
   }
@@ -306,6 +348,17 @@ function stepOnce(state: ActualState) {
       stock: null,
     });
     state.nextFeed = state.time + 60 / state.settings.feedRate;
+    if (id % 20 === 0) {
+      const totalKg = state.units.reduce(
+        (sum, unit) => sum + weightKg(unit.grade),
+        0,
+      );
+      event(
+        state,
+        'feeding',
+        `${MATERIALS[state.units[id].grade].name}，累计 ${state.units.length} 批 · ${Math.round(totalKg)} kg`,
+      );
+    }
   }
   // Fixed-order transport and finite receiving stocks create deterministic backpressure.
   for (const unit of state.units) {

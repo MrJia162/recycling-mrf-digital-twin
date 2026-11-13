@@ -22,7 +22,13 @@ import {
   Users,
 } from "lucide-react";
 import ActualScene, { type CameraView } from "./ActualScene";
-import { ActualSimulation, deviceStatus, openGate, statusTone } from "./engine";
+import {
+  ActualSimulation,
+  deviceStatus,
+  EVENT_KIND_LABELS,
+  openGate,
+  statusTone,
+} from "./engine";
 import {
   COLOR_GROUPS,
   DEFAULT_COLORS,
@@ -38,24 +44,22 @@ import {
   EQUIPMENT_IDS,
   MATERIALS,
   PLAYBACK_HORIZON,
-  PARAMETER_LIMITS,
   SMALL_GRADES,
   type EquipmentId,
-  type Parameter,
 } from "./process";
 import "./actual.css";
 
-const PARAMETERS: {
-  id: Parameter;
-  label: string;
-  unit: string;
-  step: number;
-}[] = [
-  { id: "feedRate", label: "上料节拍", unit: "批/min", step: 10 },
-  { id: "beltSpeed", label: "输送倍率", unit: "×", step: 0.1 },
-  { id: "threshold", label: "成品仓打包阈值", unit: "批", step: 1 },
-  { id: "robotSpeed", label: "机械手动作倍率", unit: "×", step: 0.1 },
-];
+// const PARAMETERS: {
+//   id: Parameter;
+//   label: string;
+//   unit: string;
+//   step: number;
+// }[] = [
+//   { id: "feedRate", label: "上料节拍", unit: "批/min", step: 10 },
+//   { id: "beltSpeed", label: "输送倍率", unit: "×", step: 0.1 },
+//   { id: "threshold", label: "成品仓打包阈值", unit: "批", step: 1 },
+//   { id: "robotSpeed", label: "机械手动作倍率", unit: "×", step: 0.1 },
+// ];
 const STOPS = [
   { time: 0, label: "上料" },
   { time: 35, label: "人工 / 脱标" },
@@ -764,22 +768,24 @@ export default function ActualApp() {
                   </div>
                 </section>
               )}
-              <details className="small-stock-panel panel-frame">
-                <summary>
-                  <span className="panel-title-mark">《</span>
-                  独立小仓位
-                </summary>
-                <div>
-                  {SMALL_GRADES.map((grade) => (
-                    <p key={grade}>
-                      <i style={{ background: MATERIALS[grade].color }} />
-                      {MATERIALS[grade].name}
-                      <strong>{state.stocks[grade].length}</strong>
-                    </p>
-                  ))}
-                </div>
-                <small>每 4 批申请人工转运，共用同一打包资源。</small>
-              </details>
+              {selected === "E14" && (
+                <details className="small-stock-panel panel-frame">
+                  <summary>
+                    <span className="panel-title-mark">《</span>
+                    独立小仓位
+                  </summary>
+                  <div>
+                    {SMALL_GRADES.map((grade) => (
+                      <p key={grade}>
+                        <i style={{ background: MATERIALS[grade].color }} />
+                        {MATERIALS[grade].name}
+                        <strong>{state.stocks[grade].length}</strong>
+                      </p>
+                    ))}
+                  </div>
+                  <small>每 4 批申请人工转运，共用同一打包资源。</small>
+                </details>
+              )}
               {selected === "E13" && (
                 <section
                   className="baler-panel panel-frame"
@@ -817,6 +823,7 @@ export default function ActualApp() {
                 </section>
               )}
 
+              {/*
               <details className="actual-parameters panel-frame">
                 <summary>
                   <span className="panel-title-mark">《</span>
@@ -852,36 +859,42 @@ export default function ActualApp() {
                 ))}
                 <small>调整按当前时刻记录，拖回历史可重放。</small>
               </details>
-              <section
-                className="actual-events panel-frame"
-                aria-label="最近生产事件"
-              >
-                <div className="panel-title">
-                  <span className="panel-title-mark">《</span>
-                  <h2>AI 事件</h2>
-                  <small>
-                    <Radar size={11} /> LIVE EVENTS
-                  </small>
-                </div>
-                <div className="panel-body">
-                  {state.events.length === 0 && (
-                    <p className="event-empty">
-                      <time>{formatTime(state.time)}</time>
-                      等待产线事件…
-                    </p>
-                  )}
-                  {state.events
-                    .slice(-4)
-                    .reverse()
-                    .map((event, index) => (
-                      <p key={`${event.time}-${index}`}>
-                        <time>{formatTime(event.time)}</time>
-                        {event.text}
-                      </p>
-                    ))}
-                </div>
-              </section>
+              */}
             </>
+          )}
+          {selected === null && (
+            <section
+              className="actual-events panel-frame"
+              aria-label="最近生产事件"
+            >
+              <div className="panel-title">
+                <span className="panel-title-mark">《</span>
+                <h2>事件</h2>
+                <small>
+                  <Radar size={11} /> LIVE EVENTS
+                </small>
+              </div>
+              <div className="panel-body">
+                {state.events.length === 0 && (
+                  <p className="event-empty">
+                    <time>{formatTime(state.time)}</time>
+                    等待产线事件…
+                  </p>
+                )}
+                {state.events
+                  .slice(-4)
+                  .reverse()
+                  .map((event, index) => (
+                    <p key={`${event.time}-${index}`}>
+                      <time>{formatTime(event.time)}</time>
+                      <span className={`event-kind ${event.kind}`}>
+                        {EVENT_KIND_LABELS[event.kind]}
+                      </span>
+                      {event.text}
+                    </p>
+                  ))}
+              </div>
+            </section>
           )}
         </aside>
       </main>
