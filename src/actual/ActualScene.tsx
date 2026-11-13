@@ -57,6 +57,7 @@ interface Props {
   paths: boolean;
   shell: boolean;
   view: CameraView;
+  viewNonce: number;
   colors: ColorOverrides;
   partColors: PartColors;
   pickPart: boolean;
@@ -2161,6 +2162,7 @@ function EquipmentMotion({ simulation }: Pick<Props, "simulation">) {
   );
 }
 
+const OVERVIEW_VIEW = { azimuth: 64, elevation: 21.6, distance: 32.3 };
 const FOCUS_OVERRIDES: Partial<
   Record<
     EquipmentId,
@@ -2184,8 +2186,9 @@ const FOCUS_OVERRIDES: Partial<
 function CameraRig({
   selected,
   view,
+  viewNonce,
   readout,
-}: Pick<Props, "selected" | "view"> & {
+}: Pick<Props, "selected" | "view" | "viewNonce"> & {
   readout: RefObject<HTMLDivElement | null>;
 }) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null),
@@ -2236,18 +2239,25 @@ function CameraRig({
       desired.current
         .copy(target.current)
         .add(direction.multiplyScalar(distance));
-    } else
+    } else if (view === "top") {
+      desired.current
+        .copy(target.current)
+        .add(new THREE.Vector3(0.01, 40 * fit, 0));
+    } else {
+      const azimuth = THREE.MathUtils.degToRad(OVERVIEW_VIEW.azimuth);
+      const elevation = THREE.MathUtils.degToRad(OVERVIEW_VIEW.elevation);
       desired.current
         .copy(target.current)
         .add(
-          view === "top"
-            ? new THREE.Vector3(0.01, 40 * fit, 0)
-            : new THREE.Vector3(29, 29, 35)
-                .normalize()
-                .multiplyScalar(34 * fit),
+          new THREE.Vector3(
+            Math.sin(azimuth) * Math.cos(elevation),
+            Math.sin(elevation),
+            Math.cos(azimuth) * Math.cos(elevation),
+          ).multiplyScalar(OVERVIEW_VIEW.distance * fit),
         );
+    }
     clock.current = 0;
-  }, [focusKey, view, size.width, size.height]);
+  }, [focusKey, view, viewNonce, size.width, size.height]);
   useFrame((_, delta) => {
     if (!controls.current) return;
     readoutClock.current += delta;
@@ -2512,6 +2522,7 @@ export default function ActualScene(props: Props) {
           <CameraRig
             selected={props.selected}
             view={props.view}
+            viewNonce={props.viewNonce}
             readout={cameraReadout}
           />
           <LabelProjector

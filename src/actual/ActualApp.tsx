@@ -126,9 +126,10 @@ export default function ActualApp() {
   const [showStandardSections, setShowStandardSections] = useState(false);
   const [showPlayback, setShowPlayback] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
+  const [viewNonce, setViewNonce] = useState(0);
   const [zoomShot, setZoomShot] = useState<number | null>(null);
   const [paths, setPaths] = useState(false),
-    [shell, setShell] = useState(false);
+    [shell, setShell] = useState(true);
   const [showPalette, setShowPalette] = useState(false);
   const [colors, setColors] = useState<ColorOverrides>({});
   const [partColors, setPartColors] = useState<PartColors>({});
@@ -240,6 +241,29 @@ export default function ActualApp() {
             <span className="eyebrow">RELOOP · TONGXIANG</span>
             <span className="brand-sub">MRF DIGITAL TWIN</span>
           </div>
+          <section className="actual-metrics" aria-label="产线模拟统计">
+            <div>
+              <span>累计上料</span>
+              <strong data-testid="received-count">
+                {state.units.length}
+                <small>批</small>
+              </strong>
+            </div>
+            <div>
+              <span>已打包</span>
+              <strong data-testid="baled-count">
+                {baled}
+                <small>批 / {state.bales.length} 包</small>
+              </strong>
+            </div>
+            <div>
+              <span>在制物料</span>
+              <strong>
+                {working}
+                <small>批</small>
+              </strong>
+            </div>
+          </section>
         </div>
         <div className="actual-title">
           <i className="title-wing" aria-hidden="true" />
@@ -252,22 +276,24 @@ export default function ActualApp() {
           <i className="title-wing reverse" aria-hidden="true" />
         </div>
         <div className="actual-header-side">
-          <span className="live-chip">
-            <i />
-            系统在线
-          </span>
-          <span className="header-clock">{formatClock(clock)}</span>
-          <a
-            className="header-link"
-            href="./index.html"
-            aria-expanded={showPlayback}
-            onClick={(event) => {
-              event.preventDefault();
-              setShowPlayback((value) => !value);
-            }}
-          >
-            原演示
-          </a>
+          <div className="header-status">
+            <span className="live-chip">
+              <i />
+              系统在线
+            </span>
+            <span className="header-clock">{formatClock(clock)}</span>
+            <a
+              className="header-link"
+              href="./index.html"
+              aria-expanded={showPlayback}
+              onClick={(event) => {
+                event.preventDefault();
+                setShowPlayback((value) => !value);
+              }}
+            >
+              原演示
+            </a>
+          </div>
         </div>
       </header>
 
@@ -342,6 +368,7 @@ export default function ActualApp() {
             paths={paths}
             shell={shell}
             view={view}
+            viewNonce={viewNonce}
             colors={colors}
             partColors={partColors}
             pickPart={pickPart}
@@ -358,7 +385,7 @@ export default function ActualApp() {
                   ["overview", "全线"],
                   ["top", "俯视"],
                   // ["focus", "聚焦设备"],
-                ] as const
+                ] as [CameraView, string][]
               ).map(([id, label]) => (
                 <button
                   key={id}
@@ -368,7 +395,10 @@ export default function ActualApp() {
                       setSelected(null);
                       setShowStandardSections(false);
                     }
+                    if (id === "overview") setShell(true);
+                    else if (id === "top") setShell(false);
                     setView(id);
+                    setViewNonce((value) => value + 1);
                   }}
                 >
                   {label}
@@ -928,29 +958,6 @@ export default function ActualApp() {
               ))}
             </div>
           </div>
-          <section className="actual-metrics" aria-label="产线模拟统计">
-            <div>
-              <span>累计上料</span>
-              <strong data-testid="received-count">
-                {state.units.length}
-                <small>批</small>
-              </strong>
-            </div>
-            <div>
-              <span>已打包</span>
-              <strong data-testid="baled-count">
-                {baled}
-                <small>批 / {state.bales.length} 包</small>
-              </strong>
-            </div>
-            <div>
-              <span>在制物料</span>
-              <strong>
-                {working}
-                <small>批</small>
-              </strong>
-            </div>
-          </section>
         </footer>
       )}
       {zoomShot !== null && (

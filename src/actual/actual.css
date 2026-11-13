@@ -267,6 +267,13 @@ input[type='range']::-moz-range-thumb {
 }
 .actual-header-side {
   display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.header-status {
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 14px;
@@ -1769,7 +1776,8 @@ input[type='range']::-moz-range-thumb {
 }
 @media (max-width: 760px) {
   .actual-header {
-    height: 74px;
+    height: auto;
+    min-height: 74px;
     padding: 10px 14px;
     grid-template-columns: auto 1fr;
   }
@@ -1814,7 +1822,18 @@ input[type='range']::-moz-range-thumb {
     display: none;
   }
   .actual-header-side {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: flex-start;
+  }
+  .header-status {
     display: none;
+  }
+  .actual-header-side .actual-metrics {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
   }
   .actual-stage {
     height: 58svh;
