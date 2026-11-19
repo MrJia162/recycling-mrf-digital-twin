@@ -66,6 +66,23 @@ const STOPS = [
   { time: 60, label: "二次分选" },
   { time: 100, label: "自动打包" },
 ];
+const TOUR_SEQUENCE: { id: EquipmentId; duration: number }[] = [
+  { id: "E06", duration: 3000 },
+  { id: "E17", duration: 5000 },
+  { id: "E03", duration: 3000 },
+  { id: "E07", duration: 3000 },
+  { id: "E14", duration: 3000 },
+  { id: "E02", duration: 3000 },
+  { id: "E11", duration: 3000 },
+  { id: "E12", duration: 3000 },
+  { id: "E09", duration: 3000 },
+  { id: "E18", duration: 5000 },
+  { id: "E15", duration: 5000 },
+  { id: "E04", duration: 3000 },
+  { id: "E05", duration: 3000 },
+  { id: "E10", duration: 3000 },
+  { id: "E13", duration: 3000 },
+];
 const SILO_DEVICE_IDS = new Set<EquipmentId>(["E02", "E03", "E04", "E05"]);
 const SORTER_SHOTS = [
   "001.png",
@@ -131,6 +148,7 @@ export default function ActualApp() {
   const [showPlayback, setShowPlayback] = useState(false);
   const [view, setView] = useState<CameraView>("overview");
   const [viewNonce, setViewNonce] = useState(0);
+  const [tourStep, setTourStep] = useState<number | null>(null);
   const [zoomShot, setZoomShot] = useState<number | null>(null);
   const [paths, setPaths] = useState(false),
     [shell, setShell] = useState(true);
@@ -203,6 +221,18 @@ export default function ActualApp() {
     setShowStandardSections(id !== "E17");
     setView("focus");
   }, []);
+  useEffect(() => {
+    if (tourStep === null) return;
+    const step = TOUR_SEQUENCE[tourStep];
+    selectDevice(step.id);
+    const timer = window.setTimeout(() => {
+      setTourStep((current) => {
+        if (current === null) return null;
+        return current + 1 < TOUR_SEQUENCE.length ? current + 1 : null;
+      });
+    }, step.duration);
+    return () => window.clearTimeout(timer);
+  }, [tourStep, selectDevice]);
   const seek = (time: number) => {
     simulation.seek(time);
     setPlaying(false);
@@ -421,6 +451,14 @@ export default function ActualApp() {
                 onClick={() => setShell((value) => !value)}
               >
                 厂房
+              </button>
+              <button
+                aria-pressed={tourStep !== null}
+                onClick={() =>
+                  setTourStep((step) => (step === null ? 0 : null))
+                }
+              >
+                分拣线介绍
               </button>
               {/* <button
                 aria-pressed={showPalette}
